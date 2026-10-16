@@ -2,6 +2,7 @@
 __pycache__/
 .pytest_cache/
 data/
+data-test/
 models/
 assets/models/
 *.pyc

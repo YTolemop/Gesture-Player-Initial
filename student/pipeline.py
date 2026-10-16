@@ -15,11 +15,13 @@ class Pipeline:
         pass
 
     def predict(self, sample) -> Commands:
-        """sample.left/right: (21,3) arrays or None; return all three channels.
+        """sample.hands: raw detections (see core/types.py); return Commands.
 
-        TODO: normalization, KNN prediction, rejection, temporal filtering,
+        TODO: interpret handedness/scores, handle missing/conflicting hands,
+        choose image/world coordinates, normalization, KNN, rejection, filtering,
         and mapping left/right/both gestures to arena commands.
-        Missing or uncertain hands should produce NONE.
+        An empty hands list is also passed here. Missing/uncertain hands must
+        produce NONE and clear stale history; the runner does not do this for you.
         """
         raise NotImplementedError("Implement student.pipeline.Pipeline.predict")
 

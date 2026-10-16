@@ -1,5 +1,6 @@
 import argparse
 from contextlib import ExitStack
+from dataclasses import asdict
 import json
 from pathlib import Path
 import sys
@@ -24,7 +25,8 @@ def parser():
         cmd = sub.add_parser(name)
         cmd.add_argument("--camera", type=int, default=0)
         cmd.add_argument("--seconds", type=positive, help="otherwise stop with Ctrl+C")
-        cmd.add_argument("--swap-hands", action="store_true")
+        cmd.add_argument("--preview", action="store_true",
+                         help="show camera and raw landmarks; Q/Esc stops")
         if name == "record":
             cmd.add_argument("--label", required=True, help="your own gesture class name")
             cmd.add_argument("--channel", choices=("left", "right", "both"), required=True)
@@ -57,7 +59,7 @@ def capture(args):
             raise RuntimeError("Student pipeline is unfinished; implement it and set algorithms availability")
 
     with ExitStack() as stack:
-        detector = Landmarks(swap_handedness=args.swap_hands)
+        detector = Landmarks()
         stack.callback(detector.close)
         camera = Camera(args.camera)
         stack.callback(camera.close)
@@ -66,6 +68,9 @@ def capture(args):
             stack.callback(client.close)
             result = client.connect(args.server, args.room, args.pair_code, pipeline.algorithms)
             print(f"Paired: room={result['roomCode']}; ready/start in arena", flush=True)
+        if args.preview:
+            from core.preview import show_preview
+            stack.callback(cv2.destroyAllWindows)
         video = samples = None
         if args.command == "record":
             import uuid
@@ -101,35 +106,24 @@ def capture(args):
                         if not video.isOpened():
                             raise RuntimeError("Cannot open MP4 writer")
                     video.write(frame)
-                    samples.write(json.dumps({
-                        "timestamp": timestamp, "label": args.label, "channel": args.channel,
-                        "left": sample.left.tolist() if sample.left is not None else None,
-                        "right": sample.right.tolist() if sample.right is not None else None,
-                        "width": sample.width, "height": sample.height,
-                        "capture_version": sample.capture_version, "image_mirrored": True,
-                        "camera": sample.camera}) + "\n")
+                    samples.write(json.dumps({**asdict(sample), "label": args.label,
+                                              "channel": args.channel}) + "\n")
                 if pipeline:
                     current = client.revision
                     if current != revision:
                         pipeline.reset()
                         revision = current
-                    # Missing hands clear output, including any stale filter history.
-                    if sample.left is None and sample.right is None:
-                        pipeline.reset()
-                        commands = Commands()
-                    else:
-                        commands = pipeline.predict(sample)
-                        if not isinstance(commands, Commands):
-                            raise TypeError("Pipeline.predict must return Commands")
-                        commands = Commands(
-                            left=commands.left if sample.left is not None else "NONE",
-                            right=commands.right if sample.right is not None else "NONE",
-                            both=commands.both if sample.left is not None and sample.right is not None else "NONE")
+                    # Students own handedness, missing-hand behavior and filtering.
+                    commands = pipeline.predict(sample)
+                    if not isinstance(commands, Commands):
+                        raise TypeError("Pipeline.predict must return Commands")
                     if now - last_send >= .1:
                         client.send(commands, revision)
                         last_send = now
+                if args.preview and not show_preview(frame, sample):
+                    break
                 if now - last_report >= 1:
-                    print(f"frames={count} left={sample.left is not None} right={sample.right is not None}", flush=True)
+                    print(f"frames={count} hands={len(sample.hands)}", flush=True)
                     last_report = now
         except KeyboardInterrupt:
             print("Stopped.")

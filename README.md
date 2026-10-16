@@ -4,7 +4,7 @@
 
 你會依序完成：設定環境 → 確認鏡頭 → 收集資料 → 實作辨識 → 訓練與驗證 → 連線遊玩。
 
-本包已提供鏡頭讀取、手部關節偵測、資料錄製與競技場連線。你需要完成特徵正規化、KNN 分類、未知手勢拒絕、時間濾波，以及手勢到遊戲指令的對應。
+本包提供鏡頭讀取、MediaPipe 初始化與推論、原始關節預覽與錄製，以及競技場連線。從 MediaPipe 原始結果到遊戲指令的決策流程，由你完成：左右手整理、可靠度判斷、座標選擇、資料清理、特徵正規化、KNN 分類、未知手勢拒絕、時間濾波與指令映射。
 
 這是實作起點，目前沒有訓練好的自訂手勢分類模型。 MediaPipe 提供的是已訓練好的「手部關節偵測模型」，用途是找出關節座標，不會替你完成遊戲手勢分類。尚未實作時，`train` 和 `run` 會提示未完成。
 
@@ -57,7 +57,7 @@ sudo apt update
 sudo apt install python3.13-venv
 ```
 
-安裝後重新執行建立環境與安裝套件的指令。本包沒有使用 Tk 視窗，不需要另外安裝 Tk 套件。
+安裝後重新執行建立環境與安裝套件的指令。關節預覽使用 OpenCV 視窗，不需要另外安裝 Tk 套件。
 
 各系統第一行應顯示 `Python 3.13.x`。`prepare` 下載並驗證關節模型；`check` 成功時會顯示 `Dependencies and landmark model OK`。這只代表依賴與關節模型可用，尚未測試鏡頭或你的辨識程式。
 
@@ -81,33 +81,29 @@ source .venv/bin/activate
 
 在 VS Code 按 `Ctrl+Shift+P`（Mac 為 `Cmd+Shift+P`），搜尋 `Python: Select Interpreter`，選本專案 `.venv` 的 Python，讓編輯器也使用相同環境。
 
-## 2. 確認鏡頭與左右手
+## 2. 確認鏡頭與 MediaPipe 關節
 
 ```powershell
-python main.py camera --seconds 10
+python main.py camera --preview --seconds 10
 ```
 
-把左手、右手分別放到鏡頭前，觀察終端機的 `left=True`、`right=True` 是否對應正確。這裡的左右是使用者本人的左右手，不是畫面的左右。
+視窗會顯示鏡頭影像、每隻手的 21 個關鍵點與連線，以及 MediaPipe 原始左右手分類與分數。這只用來確認模型能抓到手，沒有套用學員的分類或可靠度判斷。分數是左右手分類分數，不是手勢辨識正確率，也不是關節座標精準度。
 
-本包沒有即時影像視窗，狀態會顯示在終端機；錄製完成後可自行開啟影片檢查。未指定 `--seconds` 時，按 `Ctrl+C` 停止。
+預覽影像已鏡像。`hand[0]`、`hand[1]` 是該幀的模型輸出順序，不代表固定左右手，也不是跨影格的追蹤 ID。
+
+預覽視窗取得焦點時，按 `Q`、`Esc` 或關閉視窗可停止；終端機也可按 `Ctrl+C`。未指定 `--seconds` 時會持續執行。不加 `--preview` 則只在終端機顯示 `hands=...`，不開視窗。
 
 若開到錯誤鏡頭，可試其他索引：
 
 ```powershell
-python main.py camera --camera 1 --seconds 10
+python main.py camera --camera 1 --preview --seconds 10
 ```
 
-若左右手判定顛倒，可測試：
+`--camera`、`--seconds`、`--preview` 都可用在 `camera`、`record`、`run`。錄製與遊玩時，請使用確認過的鏡頭索引。工具不替你修正左右手，如何解讀分類、處理鏡像與分配左右手，由你實作。
 
-```powershell
-python main.py camera --swap-hands --seconds 10
-```
+鏡頭權限：Windows 請允許桌面應用程式使用攝影機；macOS 請在「系統設定 → 隱私權與安全性 → 攝影機」允許 VS Code／Terminal，必要時重啟應用程式；Linux 請確認目前帳號可存取攝影機裝置。預覽需要可開啟視窗的本機桌面環境。
 
-確認需要 `--camera` 或 `--swap-hands` 後，錄製與遊玩時也要使用相同設定。這些參數都能用在 `camera`、`record`、`run`。
-
-鏡頭權限：Windows 請允許桌面應用程式使用攝影機；macOS 請在「系統設定 → 隱私權與安全性 → 攝影機」允許 VS Code／Terminal，必要時重啟應用程式；Linux 請確認目前帳號可存取攝影機裝置。請在可使用本機攝影機的桌面環境操作。
-
-完成標準：鏡頭持續提供影格，左、右手能正確偵測，手移開後相應欄位會變成 `False`。
+完成標準：鏡頭持續提供影格，手放入鏡頭時能看見關鍵點；手移開時偵測數量回到零。
 
 ## 3. 設計並收集手勢資料
 
@@ -121,14 +117,14 @@ python main.py camera --swap-hands --seconds 10
 | left | point_right | MOVE_RIGHT |
 | right | fist | NORMAL_ATTACK |
 
-`--label` 是你自行定義的分類標籤；`--channel` 表示這段資料要用於 `left`、`right` 或 `both` 的辨識。工具不會自動把標籤轉成遊戲指令，也不會替你判斷錄製時是否做對手勢。
+`--label` 是你自行定義的分類標籤；`--channel` 表示這段資料預計用於 `left`、`right` 或 `both`，是你提供的標註，不是工具判定的左右手。錄製時仍會保存所有偵測到的手，不依通道篩選。工具不會自動把標籤轉成遊戲指令，也不會替你判斷錄製時是否做對手勢。
 
 擺好對應手勢後逐次錄製，例如：
 
 ```powershell
 python main.py record --label point_left --channel left --seconds 10
 python main.py record --label point_right --channel left --seconds 10
-python main.py record --label fist --channel right --seconds 10
+python main.py record --label fist --channel right --seconds 10 --preview
 ```
 
 每次會在 `data/` 產生一組新的檔案，不覆寫舊檔：
@@ -138,7 +134,7 @@ python main.py record --label fist --channel right --seconds 10
 | `.mp4` | 檢查手勢、構圖與錄製品質；不含聲音 |
 | `.jsonl` | 逐幀的標籤、通道、關節座標等資料，供訓練與分析使用 |
 
-每個手勢分多次錄製，適度改變位置、距離與角度。錄完先看影片，避免把切換姿勢、做錯動作的影格當成正確範例。未偵測到手的影格也會保留，訓練時需自行處理。
+每個手勢分多次錄製，適度改變位置、距離與角度。錄完先看影片，避免把切換姿勢、做錯動作的影格當成正確範例。未偵測到手、低左右手分類分數，或左右手分類衝突的影格都會保留，訓練時需自行清理、取樣與決定可靠度標準。
 
 另外錄一批獨立測試資料，可用 `--output` 放到其他資料夾。例如擺好 `fist` 後：
 
@@ -158,24 +154,38 @@ python main.py record --label fist --channel right --seconds 10 --output data-te
 | --- | --- |
 | `train(data_dir, model_path)` | 讀取錄製資料，處理無效樣本、建立特徵，儲存 KNN 所需資料及必要設定 |
 | `Pipeline.__init__(model_path)` | 載入模型與設定，初始化辨識所需狀態 |
-| `Pipeline.predict(sample)` | 正規化與特徵擷取、KNN 分類、拒絕不確定結果、時間濾波、映射遊戲指令，回傳 `Commands` |
+| `Pipeline.predict(sample)` | 解讀原始手部資料、分配左右手、判斷可靠度，再做特徵擷取、KNN、拒絕、濾波與指令映射，回傳 `Commands` |
 | `Pipeline.reset()` | 清除濾波與其他歷史狀態，避免上一回合結果影響下一回合 |
 
 建議按以下順序實作，每完成一階段就用自己的資料驗證：
 
-1. 特徵與正規化：決定如何減少手的位置、大小等差異。訓練與預測必須使用同一套轉換。
-2. KNN：決定距離、鄰居數與投票方式。KNN 的訓練通常是準備並保存特徵與標籤，不一定有長時間的反覆學習。
-3. 未知手勢拒絕：決定何時不應硬分到已知類別；缺手、低信心或未知姿勢應回到 `NONE`。
-4. 時間濾波：讓結果穩定，同時控制延遲；缺手時需清除相應歷史，避免舊結果繼續輸出。
-5. 指令映射：將自己的類別轉成競技場接受的指令，決定左右手與雙手的組合方式。
+1. 原始結果整理：理解 `sample.hands`，自行分配左右手。決定如何使用分類分數、處理同側衝突、缺手與鏡像；不要把陣列索引當成左右手或固定追蹤 ID。
+2. 資料清理與取樣：處理無效影格、類別數量不平衡與相鄰影格重複；保留獨立錄製的測試資料。
+3. 特徵與正規化：選擇影像座標或三維座標，決定如何減少位置、大小等差異。訓練與預測必須使用同一套轉換。
+4. KNN：決定距離、鄰居數與投票方式。訓練通常是準備並保存特徵與標籤，不一定有長時間的反覆學習。
+5. 未知手勢拒絕：決定何時不應硬分到已知類別；缺手、低信心或未知姿勢應回到 `NONE`。
+6. 時間濾波：讓結果穩定，同時控制延遲；缺少某隻手時，清除相應歷史，避免舊結果繼續輸出。
+7. 指令映射與評估：轉成合法遊戲指令，處理左右手與雙手組合，並用獨立資料檢查效果。
 
 ### 輸入資料
 
-`sample.left`、`sample.right` 各為 `21 × 3` 的關節座標，未偵測到時是 `None`。另有 `width`、`height` 與 `timestamp`。
+`Pipeline.predict(sample)` 收到 `RawHandSample`。`sample.hands` 保留本幀所有偵測到的手，沒有手時是空清單 `[]`，不提供預先整理好的左右手欄位。
 
-影像已鏡像；座標是 MediaPipe 的影像正規化座標，不是世界座標，也不代表已完成分類所需的特徵正規化。若換算像素尺度，x、z 對應影像寬度，y 對應影像高度。
+每個 `sample.hands[i]` 包含：
 
-JSONL 每行包含時間戳、標籤、通道、左右手原始座標、影像尺寸與鏡頭資訊。MP4 以固定 30 FPS 寫入，辨識速度較慢時影片長度可能與實際時間不同；資料分析以 JSONL 時間戳為準。
+| 欄位 | 內容 |
+| --- | --- |
+| `landmarks` | 21 個 `[x, y, z]` 的清單，使用影像正規化座標 |
+| `world_landmarks` | 同樣 21 個 `[x, y, z]`，單位為公尺，以該隻手的幾何中心為原點 |
+| `handedness` | 模型回傳的分類清單，每筆保留 `index`、`category_name`、`display_name`、`score` |
+
+不同手的三維座標各有自己的原點，不能直接當成同一個場景座標系來計算雙手間距。影像座標也不代表已完成分類所需的特徵正規化；若換算像素尺度，x、z 對應影像寬度，y 對應影像高度。
+
+樣本另有 `width`、`height`、`timestamp`、`camera`、`image_mirrored` 與 `capture_version`。輸入影像已鏡像，`image_mirrored` 為 `True`，目前資料格式標記為 `mediapipe-raw-v1`。
+
+JSONL 每行保存以上欄位與 `label`、`channel`；其中 `hands` 的每一項包含上述三組原始資訊。工具不額外依左右手分類分數過濾，MediaPipe 自身的偵測與追蹤仍使用模型設定。沒有手的影格也會保存為 `hands: []`。
+
+MP4 保存未畫關節的鏡像影像、不含聲音，以固定 30 FPS 寫入。辨識速度較慢時影片長度可能與實際時間不同；資料分析以 JSONL 時間戳為準。
 
 ### 輸出指令
 
@@ -189,7 +199,7 @@ JSONL 每行包含時間戳、標籤、通道、左右手原始座標、影像�
 
 可用指令：`MOVE_LEFT`、`MOVE_RIGHT`、`JUMP`、`CROUCH`、`BLOCK`、`NORMAL_ATTACK`、`ATTACK_SKILL`、`DEFENSE_SKILL`、`CONTROL_SKILL`、`ULTIMATE`、`NONE`。
 
-工具會清空缺失手的輸出，但信心門檻、未知姿勢拒絕與濾波仍需自行實作。
+`predict()` 每幀都會被呼叫，包含 `hands: []` 的情況。左右手是否缺失、何時清除輸出與濾波歷史，都由你判斷；主流程不會代為清空某一側的指令。比賽狀態變更時，主流程仍會呼叫 `reset()`。
 
 ## 5. 訓練與驗證
 
@@ -206,7 +216,8 @@ python main.py train --data data --model models/model.npz
 連線前應確認：
 
 - 每個類別在獨立測試資料上都能辨識，並記錄正確率與容易混淆的類別。
-- 缺手、陌生姿勢與切換手勢時，不會持續誤送遊戲指令。
+- 左右手分配正確，能處理低分數、同側衝突與輸出順序改變。
+- 缺少一隻或全部的手、陌生姿勢與切換手勢時，不會持續誤送遊戲指令。
 - 結果夠穩定，反應延遲也能接受。
 - `predict()` 回傳合法的 `Commands`，雙手合成不會混用單手指令。
 - `reset()` 能清除歷史，模型能在重新啟動程式後載入。
@@ -227,7 +238,7 @@ python main.py train --data data --model models/model.npz
 python main.py run --server "https://ga-game.codpy.org" --room "ABCD" --pair-code "012345" --model models/model.npz
 ```
 
-使用上述遊戲網址，不需加 `/controller`。配對碼保留開頭的零。若先前有指定鏡頭或修正左右手，也要在此加上相同參數。
+使用上述遊戲網址，不需加 `/controller`。配對碼保留開頭的零。若先前有指定鏡頭，也要在此加上相同的 `--camera`；可加 `--preview` 查看原始關節。預覽不會顯示你的手勢分類，請自行加入辨識輸出以便除錯。
 
 看到 `Paired: room=...; ready/start in arena` 後，回到競技場網站準備並開始。`run` 會持續讀取鏡頭、呼叫你的辨識流程並傳送指令。按 `Ctrl+C` 停止；斷線後重新取得配對碼，再啟動一次。
 
@@ -247,6 +258,7 @@ python main.py run --server "https://ga-game.codpy.org" --room "ABCD" --pair-cod
 | 找不到 Python 3.13 | 確認已安裝該版本，且 Windows Python Launcher 能透過 `py -3.13` 找到它 |
 | 缺少套件 | 確認使用專案的虛擬環境，並以同一個 Python 安裝 `requirements-lock.txt` |
 | 缺少關節模型或雜湊不符 | 執行 `prepare`；若既有檔案損壞，移除 `assets/models/hand_landmarker.task` 後重新下載 |
+| 預覽無法開啟 | 確認在可開視窗的桌面環境操作，且安裝的是專案指定的 OpenCV 套件；不加 `--preview` 可只顯示終端機狀態 |
 | 鏡頭無法開啟 | 檢查系統攝影機權限、其他程式是否占用，並嘗試 `--camera 1` |
 | `train` 顯示 `NotImplementedError` 或 `Implement student.pipeline.train` | 訓練入口仍未完成，請回到第 4 步 |
 | `run` 顯示 `Student pipeline is unfinished` | 檢查演算法實作與 `Pipeline.algorithms` 的狀態宣告 |
@@ -263,12 +275,12 @@ python main.py run --server "https://ga-game.codpy.org" --room "ABCD" --pair-cod
 | --- | --- |
 | `prepare` | 下載並驗證關節模型，需要網路 |
 | `check` | 檢查依賴與關節模型，不開鏡頭 |
-| `camera` | 開鏡頭，在終端機顯示左右手偵測狀態 |
+| `camera` | 開鏡頭，顯示手的偵測數量；加 `--preview` 顯示關節疊圖 |
 | `record` | 錄製 MP4 與逐幀 JSONL，需要 `--label`、`--channel` |
 | `train` | 呼叫你的訓練入口，可指定 `--data`、`--model` |
 | `run` | 呼叫你的辨識入口並連線，需要 `--server`、`--pair-code`；可指定 `--room`、`--model` |
 
-`data/`、`models/` 與下載的 `assets/models/` 不納入版本控制，備份或交付時請另外確認。錄製與辨識過程中的影像、關節資料不會由本包上傳競技場。
+`data/`、`data-test/`、`models/` 與下載的 `assets/models/` 不納入版本控制，備份或交付時請另外確認。錄製與辨識過程中的影像、關節資料不會由本包上傳競技場。
 
 ## 附錄：連線與協定參考
 

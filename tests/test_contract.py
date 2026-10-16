@@ -26,6 +26,7 @@ def test_starter_does_not_supply_answers():
 def test_terminal_contract():
     args = parser().parse_args(["record", "--label", "wave", "--channel", "left", "--seconds", "2"])
     assert args.channel == "left" and args.seconds == 2
+    assert parser().parse_args(["camera", "--preview"]).preview
     args = parser().parse_args(["run", "--server", "http://localhost:3000", "--pair-code", "000012"])
     assert args.pair_code == "000012"
     for value in ("0", "-1", "nan", "inf"):
