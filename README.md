@@ -2,44 +2,84 @@
 
 手勢工作坊學員包：用自己的手勢控制競技場遊戲。
 
-你會依序完成：**設定環境 → 確認鏡頭 → 收集資料 → 實作辨識 → 訓練與驗證 → 連線遊玩**。
+你會依序完成：設定環境 → 確認鏡頭 → 收集資料 → 實作辨識 → 訓練與驗證 → 連線遊玩。
 
 本包已提供鏡頭讀取、手部關節偵測、資料錄製與競技場連線。你需要完成特徵正規化、KNN 分類、未知手勢拒絕、時間濾波，以及手勢到遊戲指令的對應。
 
-**這是實作起點，目前沒有訓練好的自訂手勢分類模型。** MediaPipe 提供的是已訓練好的「手部關節偵測模型」，用途是找出關節座標，不會替你完成遊戲手勢分類。尚未實作時，`train` 和 `run` 會提示未完成。
+這是實作起點，目前沒有訓練好的自訂手勢分類模型。 MediaPipe 提供的是已訓練好的「手部關節偵測模型」，用途是找出關節座標，不會替你完成遊戲手勢分類。尚未實作時，`train` 和 `run` 會提示未完成。
 
 下方環境設定與操作指令可以直接使用；演算法部分提供工作項目與驗收標準，請自行設計並實作。
 
 ## 1. 設定環境
 
-需要 Python **3.13**、攝影機，以及首次下載依賴與關節模型所需的網路。連線遊玩時，另需主辦方提供可連線的競技場網址；本包不包含競技場伺服器。
+需要 Python 3.13、攝影機，以及首次下載依賴與關節模型所需的網路。建議使用 VS Code 編輯程式。遊戲網址：[https://ga-game.codpy.org/](https://ga-game.codpy.org/)。
 
-以下以 **Windows PowerShell** 為例。先在解壓後的專案資料夾開啟終端機，確認目前資料夾內有 `main.py`，再執行：
+先完整解壓縮學員包，在 VS Code 選「檔案 → 開啟資料夾」，開啟內含 `main.py` 的專案資料夾，再選「終端機 → 新增終端機」。接下來的指令都在這個資料夾執行。
+
+### 建立環境與安裝套件
+
+依自己的系統選一組指令。`.venv` 是專案自己的 Python 環境；`requirements-lock.txt` 列出所需套件與固定版本。這一段只需在第一次使用或重建環境時執行。
+
+Windows：使用 PowerShell。
 
 ```powershell
 py -3.13 --version
 py -3.13 -m venv .venv
-.\.venv\Scripts\Activate.ps1
-python -m pip install -r requirements-lock.txt
-python main.py prepare
-python main.py check
-```
-
-`prepare` 下載並驗證關節模型；`check` 成功時會顯示 `Dependencies and landmark model OK`。這只代表依賴與關節模型可用，尚未測試鏡頭或你的辨識程式。
-
-每次重新開啟終端機，都要先回到專案資料夾並啟用虛擬環境：
-
-```powershell
-.\.venv\Scripts\Activate.ps1
-```
-
-若 PowerShell 不允許執行啟用腳本，可以不用啟用，改以 `.\.venv\Scripts\python.exe` 取代後續指令開頭的 `python`，例如：
-
-```powershell
 .\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
 .\.venv\Scripts\python.exe main.py prepare
 .\.venv\Scripts\python.exe main.py check
 ```
+
+macOS：使用 Terminal 的 zsh 或 bash。M 系列晶片請使用原生 Apple Silicon 的 Python 與終端機環境。
+
+```bash
+python3.13 --version
+python3.13 -m venv .venv
+./.venv/bin/python -m pip install -r requirements-lock.txt
+./.venv/bin/python main.py prepare
+./.venv/bin/python main.py check
+```
+
+Linux：使用本機桌面環境的 bash 或 zsh，並先安裝 Python 3.13。
+
+```bash
+python3.13 --version
+python3.13 -m venv .venv
+./.venv/bin/python -m pip install -r requirements-lock.txt
+./.venv/bin/python main.py prepare
+./.venv/bin/python main.py check
+```
+
+若 Linux 在建立 `.venv` 時提示缺少 `venv` 或 `ensurepip`，請安裝與 Python 3.13 對應的 venv 套件。以套件來源有提供該版本的 Ubuntu／Debian 系統為例：
+
+```bash
+sudo apt update
+sudo apt install python3.13-venv
+```
+
+安裝後重新執行建立環境與安裝套件的指令。本包沒有使用 Tk 視窗，不需要另外安裝 Tk 套件。
+
+各系統第一行應顯示 `Python 3.13.x`。`prepare` 下載並驗證關節模型；`check` 成功時會顯示 `Dependencies and landmark model OK`。這只代表依賴與關節模型可用，尚未測試鏡頭或你的辨識程式。
+
+### 後續操作使用同一個環境
+
+後面的範例統一使用 `python main.py ...`。每次重新開啟終端機，先回到專案資料夾並啟用環境。
+
+Windows PowerShell：
+
+```powershell
+.\.venv\Scripts\Activate.ps1
+```
+
+macOS／Linux：
+
+```bash
+source .venv/bin/activate
+```
+
+若 PowerShell 不允許執行啟用腳本，可以不啟用，將後續指令開頭的 `python` 換成 `.\.venv\Scripts\python.exe`。macOS／Linux 也可直接使用 `./.venv/bin/python`。
+
+在 VS Code 按 `Ctrl+Shift+P`（Mac 為 `Cmd+Shift+P`），搜尋 `Python: Select Interpreter`，選本專案 `.venv` 的 Python，讓編輯器也使用相同環境。
 
 ## 2. 確認鏡頭與左右手
 
@@ -47,7 +87,7 @@ python main.py check
 python main.py camera --seconds 10
 ```
 
-把左手、右手分別放到鏡頭前，觀察終端機的 `left=True`、`right=True` 是否對應正確。這裡的左右是**使用者本人的左右手**，不是畫面的左右。
+把左手、右手分別放到鏡頭前，觀察終端機的 `left=True`、`right=True` 是否對應正確。這裡的左右是使用者本人的左右手，不是畫面的左右。
 
 本包沒有即時影像視窗，狀態會顯示在終端機；錄製完成後可自行開啟影片檢查。未指定 `--seconds` 時，按 `Ctrl+C` 停止。
 
@@ -65,7 +105,9 @@ python main.py camera --swap-hands --seconds 10
 
 確認需要 `--camera` 或 `--swap-hands` 後，錄製與遊玩時也要使用相同設定。這些參數都能用在 `camera`、`record`、`run`。
 
-**完成標準：**鏡頭持續提供影格，左、右手能正確偵測，手移開後相應欄位會變成 `False`。
+鏡頭權限：Windows 請允許桌面應用程式使用攝影機；macOS 請在「系統設定 → 隱私權與安全性 → 攝影機」允許 VS Code／Terminal，必要時重啟應用程式；Linux 請確認目前帳號可存取攝影機裝置。請在可使用本機攝影機的桌面環境操作。
+
+完成標準：鏡頭持續提供影格，左、右手能正確偵測，手移開後相應欄位會變成 `False`。
 
 ## 3. 設計並收集手勢資料
 
@@ -79,7 +121,7 @@ python main.py camera --swap-hands --seconds 10
 | left | point_right | MOVE_RIGHT |
 | right | fist | NORMAL_ATTACK |
 
-`--label` 是你自行定義的分類標籤；`--channel` 表示這段資料要用於 `left`、`right` 或 `both` 的辨識。**工具不會自動把標籤轉成遊戲指令，也不會替你判斷錄製時是否做對手勢。**
+`--label` 是你自行定義的分類標籤；`--channel` 表示這段資料要用於 `left`、`right` 或 `both` 的辨識。工具不會自動把標籤轉成遊戲指令，也不會替你判斷錄製時是否做對手勢。
 
 擺好對應手勢後逐次錄製，例如：
 
@@ -106,7 +148,7 @@ python main.py record --label fist --channel right --seconds 10 --output data-te
 
 其他類別也要收集測試資料。不要把這批資料拿去訓練，也不要只將同一段影片相鄰影格隨機拆成訓練與測試，否則容易高估效果。可另錄日常姿勢與手勢切換過程，檢查是否誤觸。
 
-**完成標準：**每類都有多段可用資料與獨立測試資料，標籤、通道和實際手勢一致。
+完成標準：每類都有多段可用資料與獨立測試資料，標籤、通道和實際手勢一致。
 
 ## 4. 完成自己的辨識流程
 
@@ -121,11 +163,11 @@ python main.py record --label fist --channel right --seconds 10 --output data-te
 
 建議按以下順序實作，每完成一階段就用自己的資料驗證：
 
-1. **特徵與正規化：**決定如何減少手的位置、大小等差異。訓練與預測必須使用同一套轉換。
-2. **KNN：**決定距離、鄰居數與投票方式。KNN 的訓練通常是準備並保存特徵與標籤，不一定有長時間的反覆學習。
-3. **未知手勢拒絕：**決定何時不應硬分到已知類別；缺手、低信心或未知姿勢應回到 `NONE`。
-4. **時間濾波：**讓結果穩定，同時控制延遲；缺手時需清除相應歷史，避免舊結果繼續輸出。
-5. **指令映射：**將自己的類別轉成競技場接受的指令，決定左右手與雙手的組合方式。
+1. 特徵與正規化：決定如何減少手的位置、大小等差異。訓練與預測必須使用同一套轉換。
+2. KNN：決定距離、鄰居數與投票方式。KNN 的訓練通常是準備並保存特徵與標籤，不一定有長時間的反覆學習。
+3. 未知手勢拒絕：決定何時不應硬分到已知類別；缺手、低信心或未知姿勢應回到 `NONE`。
+4. 時間濾波：讓結果穩定，同時控制延遲；缺手時需清除相應歷史，避免舊結果繼續輸出。
+5. 指令映射：將自己的類別轉成競技場接受的指令，決定左右手與雙手的組合方式。
 
 ### 輸入資料
 
@@ -151,7 +193,7 @@ JSONL 每行包含時間戳、標籤、通道、左右手原始座標、影像�
 
 ## 5. 訓練與驗證
 
-**先完成 `train()`，再執行：**
+先完成 `train()`，再執行：
 
 ```powershell
 python main.py train --data data --model models/model.npz
@@ -173,19 +215,19 @@ python main.py train --data data --model models/model.npz
 
 ## 6. 配對競技場並開始遊戲
 
-先向主辦方取得競技場 HTTP(S) 網址，確認你的電腦能開啟該網站。接著：
+開啟[遊戲網站](https://ga-game.codpy.org/)，確認能進入後：
 
 1. 在競技場建立或加入房間。
 2. 選擇辨識器輸入，取得六位數配對碼。
 3. 執行 `run`，提供網址與配對碼；房間代碼可另外指定。
 
-下方網址、房間代碼與配對碼只是範例，請換成實際值：
+下方已使用遊戲網址；房間代碼 `ABCD` 與配對碼 `012345` 是範例，請換成網站顯示的實際值：
 
 ```powershell
-python main.py run --server "http://192.168.1.100:3000" --room "ABCD" --pair-code "012345" --model models/model.npz
+python main.py run --server "https://ga-game.codpy.org" --room "ABCD" --pair-code "012345" --model models/model.npz
 ```
 
-網址包含埠號（若有），不需加 `/controller`。配對碼保留開頭的零。若先前有指定鏡頭或修正左右手，也要在此加上相同參數。
+使用上述遊戲網址，不需加 `/controller`。配對碼保留開頭的零。若先前有指定鏡頭或修正左右手，也要在此加上相同參數。
 
 看到 `Paired: room=...; ready/start in arena` 後，回到競技場網站準備並開始。`run` 會持續讀取鏡頭、呼叫你的辨識流程並傳送指令。按 `Ctrl+C` 停止；斷線後重新取得配對碼，再啟動一次。
 
@@ -196,7 +238,7 @@ python main.py run --server "http://192.168.1.100:3000" --room "ABCD" --pair-cod
 - 左右手可同時維持兩個指令；相同指令合併一次，相反移動方向抵銷。
 - 同時送出不代表兩個動作必定成功，冷卻、資源、硬直與空中限制仍由競技場判斷。兩個一次性指令按左手、右手順序嘗試。
 
-**完成標準：**配對成功後，能用手勢控制遊戲；放下手或回到中立姿勢能停止持續動作，重新開始回合也不會沿用舊辨識結果。
+完成標準：配對成功後，能用手勢控制遊戲；放下手或回到中立姿勢能停止持續動作，重新開始回合也不會沿用舊辨識結果。
 
 ## 常見問題
 
@@ -209,7 +251,7 @@ python main.py run --server "http://192.168.1.100:3000" --room "ABCD" --pair-cod
 | `train` 顯示 `NotImplementedError` 或 `Implement student.pipeline.train` | 訓練入口仍未完成，請回到第 4 步 |
 | `run` 顯示 `Student pipeline is unfinished` | 檢查演算法實作與 `Pipeline.algorithms` 的狀態宣告 |
 | `predict` 顯示尚未實作 | 完成 `Pipeline.predict()`；只更新演算法旗標仍無法辨識 |
-| 配對失敗或無法連線 | 確認網站可開啟、網址與埠號正確、配對碼仍有效，以及伺服器支援本包的三通道指令 |
+| 配對失敗或無法連線 | 確認網站可開啟、網址與埠號正確、配對碼仍有效 |
 | 已配對但人物沒反應 | 確認網站已準備並開始，再檢查辨識輸出、指令映射，以及遊戲的冷卻／資源限制 |
 | 攻擊只觸發一次 | 先離開攻擊指令再做一次手勢；維持手勢不會自動連打 |
 
@@ -241,9 +283,9 @@ python main.py run --server "http://192.168.1.100:3000" --room "ABCD" --pair-cod
 | 演算法狀態 | `algorithms` 中 `normalization`、`knn` 需為 true；`filterEnabled` 為 true 時 `filter` 也需為 true |
 | 配對回覆 | 檢查 `ok`；保留 `sessionId`、`matchId`、`generation`，後續以 `controller:context` 更新 |
 | 輸入事件 | `input:state`，每份封包含 `protocolVersion: 1`、`sessionId`、`matchId`（可 null）、`generation`、遞增非負整數 `seq`、`commands` |
-| 三通道內容 | `commands` 必須完整包含 `left`、`right`、`both`，值為上列指令；不能同時包含舊欄位 `gesture` |
+| 三通道內容 | `commands` 必須完整包含 `left`、`right`、`both`，值為上列指令 |
 | 回覆 | `ok`、成功時的 `seq`；失敗時的 `errorCode`。例如 `INVALID_INPUT`、`STALE_SEQ`、`STALE_GENERATION`、`STALE_MATCH`、`ALGORITHMS_REQUIRED` |
 | 心跳 | `client:heartbeat`，建議每 0.5 秒；持續輸入也更新連線時間 |
 | 安全狀態 | 啟動／恢復遊戲先送三欄皆 `NONE`；超過 30 tick 無新輸入，核心清除持續動作 |
 
-欄位驗證見 `protocol/schemas/input-state.schema.json`。競技場需使用支援 `commands` 的版本；舊版單一 `gesture` 伺服器無法接收本包。競技場仍接受舊單指令客戶端，但新學員包使用三通道。
+欄位驗證見 `protocol/schemas/input-state.schema.json`。
