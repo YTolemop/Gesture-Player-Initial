@@ -8,7 +8,51 @@
 
 這是實作起點，目前沒有訓練好的自訂手勢分類模型。 MediaPipe 提供的是已訓練好的「手部關節偵測模型」，用途是找出關節座標，不會替你完成遊戲手勢分類。尚未實作時，`train` 和 `run` 會提示未完成。
 
-下方環境設定與操作指令可以直接使用；演算法部分提供工作項目與驗收標準，請自行設計並實作。
+閱讀時先掌握下方的專案架構，再依第 1～6 節操作。指令範例會說明用途與需要調整的參數；演算法部分提供工作項目與驗收標準，請自行設計並實作。
+
+## 專案架構與資料流程
+
+這個專案分成三部分：`core/` 取得影像與原始手部資料，`student/` 將資料轉成遊戲指令，`network/` 負責與競技場通訊。`main.py` 是操作入口，將這些部分串起來。
+
+```text
+main.py                    命令列入口：環境檢查、鏡頭、錄製、訓練、連線
+core/
+  camera.py                讀取攝影機，提供鏡像影像
+  landmarks.py             呼叫 MediaPipe，取得原始手部資料
+  types.py                 定義 RawHand 與 RawHandSample
+  preview.py               顯示影像與原始關節疊圖
+  resources.py             下載與驗證 MediaPipe 關節模型
+student/
+  pipeline.py              學員實作：訓練、辨識、狀態重設
+network/
+  commands.py              定義合法的 Commands 輸出
+  arena_client.py          處理配對、傳送指令與連線狀態
+protocol/                  競技場通訊規格與範例封包
+tests/                     工具與介面契約的測試
+requirements-lock.txt      套件與固定版本
+```
+
+錄製、訓練與遊玩是三個不同階段：
+
+```text
+錄製 record
+  鏡頭 → MediaPipe → 原始關節資料 + 手動提供的標籤／通道 → data/*.jsonl
+  鏡頭 → 鏡像影像 → data/*.mp4（供人工檢查）
+
+訓練 train（由學員實作）
+  data/*.jsonl → 清理與取樣 → 特徵轉換 → 儲存 KNN 資料與設定 → models/
+
+遊玩 run
+  鏡頭 → MediaPipe → RawHandSample → Pipeline.predict() → Commands → 競技場
+                                         ↑
+                                  載入訓練時保存的模型與設定
+```
+
+`camera` 與 `record` 可以在辨識流程尚未完成時使用。`train` 與 `run` 則會呼叫 `student/pipeline.py`，需要先完成相應入口。訓練與遊玩時的特徵轉換必須一致。
+
+兩種模型也要分清楚：`assets/models/hand_landmarker.task` 是工具下載的 MediaPipe 關節模型；`models/model.npz` 是預設的自訂手勢模型路徑，內容與儲存方式由你實作。`data/`、`models/` 等輸出資料夾會在使用工具或實作儲存流程後產生，不一定出現在剛解壓縮的專案裡。
+
+閱讀程式時，建議從 `core/types.py` 看輸入、`network/commands.py` 看輸出，再到 `student/pipeline.py` 完成兩者之間的辨識流程。需要理解工具如何呼叫它們時，再看 `main.py`。
 
 ## 1. 設定環境
 
@@ -60,6 +104,16 @@ sudo apt install python3.13-venv
 安裝後重新執行建立環境與安裝套件的指令。關節預覽使用 OpenCV 視窗，不需要另外安裝 Tk 套件。
 
 各系統第一行應顯示 `Python 3.13.x`。`prepare` 下載並驗證關節模型；`check` 成功時會顯示 `Dependencies and landmark model OK`。這只代表依賴與關節模型可用，尚未測試鏡頭或你的辨識程式。
+
+上面各行分別負責不同的事，若某一步失敗，先處理該步的錯誤：
+
+| 指令部分 | 用途 |
+| --- | --- |
+| `--version` | 確認使用的 Python 版本 |
+| `-m venv .venv` | 建立這個專案專用的 Python 環境 |
+| `-m pip install -r requirements-lock.txt` | 用該環境的 Python 安裝指定套件 |
+| `main.py prepare` | 執行專案工具，準備關節模型 |
+| `main.py check` | 檢查套件與關節模型是否可用 |
 
 ### 後續操作使用同一個環境
 
