@@ -3,6 +3,9 @@ __pycache__/
 .pytest_cache/
 data/
 data-test/
-models/
-assets/models/
+/models/
+assets/models/*
+!assets/models/hand_landmarker.task
+!assets/models/README.md
+!assets/models/LICENSE
 *.pyc

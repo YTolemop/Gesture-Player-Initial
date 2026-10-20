@@ -53,13 +53,13 @@ requirements-lock.txt      套件與固定版本
 
 `camera` 與 `record` 可以在辨識流程尚未完成時使用。`train` 與 `run` 則會呼叫 `student/pipeline.py`，需要先完成相應入口。訓練與遊玩時的特徵轉換必須一致。
 
-兩種模型也要分清楚：`assets/models/hand_landmarker.task` 是工具下載的 MediaPipe 關節模型；`models/model.npz` 是預設的自訂手勢模型路徑，內容與儲存方式由你實作。`data/`、`models/` 等輸出資料夾會在使用工具或實作儲存流程後產生，不一定出現在剛解壓縮的專案裡。
+兩種模型也要分清楚：`assets/models/hand_landmarker.task` 是專案隨附的 MediaPipe 關節模型，下載或完整解壓縮本專案即可取得，不需要另外連到 Google 下載；`models/model.npz` 是預設的自訂手勢模型路徑，內容與儲存方式由你實作。`data/`、`models/` 等輸出資料夾會在使用工具或實作儲存流程後產生，不一定出現在剛解壓縮的專案裡。
 
 閱讀程式時，建議從 `core/types.py` 看輸入、`network/commands.py` 看輸出，再到 `student/pipeline.py` 完成兩者之間的辨識流程。需要理解工具如何呼叫它們時，再看 `main.py`。
 
 ## 1. 設定環境
 
-需要 Python 3.13、攝影機，以及首次下載依賴與關節模型所需的網路。建議使用 VS Code 編輯程式。遊戲網址：[https://ga-game.codpy.org/](https://ga-game.codpy.org/)。
+需要 Python 3.13、攝影機，以及首次安裝依賴套件所需的網路。MediaPipe 關節模型已隨專案提供；模型來源與授權見 [assets/models/README.md](assets/models/README.md)。建議使用 VS Code 編輯程式。遊戲網址：[https://ga-game.codpy.org/](https://ga-game.codpy.org/)。
 
 先完整解壓縮學員包，在 VS Code 選「檔案 → 開啟資料夾」，開啟內含 `main.py` 的專案資料夾，再選「終端機 → 新增終端機」。接下來的指令都在這個資料夾執行。
 
@@ -73,7 +73,6 @@ Windows：使用 PowerShell。
 py -3.13 --version
 py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
-.\.venv\Scripts\python.exe main.py prepare
 .\.venv\Scripts\python.exe main.py check
 ```
 
@@ -83,7 +82,6 @@ macOS：使用 Terminal 的 zsh 或 bash。M 系列晶片請使用原生 Apple S
 python3.13 --version
 python3.13 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements-lock.txt
-./.venv/bin/python main.py prepare
 ./.venv/bin/python main.py check
 ```
 
@@ -93,7 +91,6 @@ Linux：使用本機桌面環境的 bash 或 zsh，並先安裝 Python 3.13。
 python3.13 --version
 python3.13 -m venv .venv
 ./.venv/bin/python -m pip install -r requirements-lock.txt
-./.venv/bin/python main.py prepare
 ./.venv/bin/python main.py check
 ```
 
@@ -106,7 +103,7 @@ sudo apt install python3.13-venv
 
 安裝後重新執行建立環境與安裝套件的指令。關節預覽使用 OpenCV 視窗，不需要另外安裝 Tk 套件。
 
-各系統第一行應顯示 `Python 3.13.x`。`prepare` 下載並驗證關節模型；`check` 成功時會顯示 `Dependencies and landmark model OK`。這只代表依賴與關節模型可用，尚未測試鏡頭或你的辨識程式。
+各系統第一行應顯示 `Python 3.13.x`。`check` 會檢查依賴與隨附的關節模型，成功時會顯示 `Dependencies and landmark model OK`。這只代表依賴與關節模型可用，尚未測試鏡頭或你的辨識程式。
 
 上面各行分別負責不同的事，若某一步失敗，先處理該步的錯誤：
 
@@ -115,7 +112,7 @@ sudo apt install python3.13-venv
 | `--version` | 確認使用的 Python 版本 |
 | `-m venv .venv` | 建立這個專案專用的 Python 環境 |
 | `-m pip install -r requirements-lock.txt` | 用該環境的 Python 安裝指定套件 |
-| `main.py prepare` | 執行專案工具，準備關節模型 |
+| `main.py prepare` | 備用工具：驗證現有模型，僅在模型遺失時連網補下載 |
 | `main.py check` | 檢查套件與關節模型是否可用 |
 
 ### 後續操作使用同一個環境
@@ -375,14 +372,14 @@ macOS／Linux 將指令開頭換成 `./.venv/bin/python`；已啟用虛擬環境
 
 | 子命令 | 用途 |
 | --- | --- |
-| `prepare` | 下載並驗證關節模型，需要網路 |
+| `prepare` | 驗證現有模型；僅在模型遺失時需要網路補下載 |
 | `check` | 檢查依賴與關節模型，不開鏡頭 |
 | `camera` | 開鏡頭，顯示手的偵測數量；加 `--preview` 顯示關節疊圖 |
 | `record` | 錄製 MP4 與逐幀 JSONL，需要 `--label`、`--channel` |
 | `train` | 呼叫你的訓練入口，可指定 `--data`、`--model` |
 | `run` | 呼叫你的辨識入口並連線，需要 `--server`、`--pair-code`；可指定 `--room`、`--model` |
 
-`data/`、`data-test/`、`models/` 與下載的 `assets/models/` 不納入版本控制，備份或交付時請另外確認。`run` 會將縮小的鏡頭影像與二維手部骨架經遊戲伺服器轉送到同場網頁；原始錄影與完整關節資料留在本機。
+`data/`、`data-test/` 與自訂手勢模型的 `models/` 不納入版本控制，備份或交付時請另外確認；MediaPipe 關節模型 `assets/models/hand_landmarker.task` 已隨專案納入版本控制。`run` 會將縮小的鏡頭影像與二維手部骨架經遊戲伺服器轉送到同場網頁；原始錄影與完整關節資料留在本機。
 
 ## 附錄：連線與協定參考
 
