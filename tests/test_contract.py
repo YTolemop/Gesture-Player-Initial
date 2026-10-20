@@ -16,11 +16,24 @@ def test_channels():
 
 def test_starter_does_not_supply_answers():
     pipeline = Pipeline()
-    assert not pipeline.algorithms["knn"]
+    assert not pipeline.algorithms["classifier"]
+    assert "knn" not in pipeline.algorithms
     with pytest.raises(NotImplementedError):
         pipeline.predict(None)
     with pytest.raises(NotImplementedError):
         train(None, None)
+
+
+def test_run_rejects_unfinished_classifier_even_with_legacy_knn(monkeypatch):
+    import main
+
+    monkeypatch.setattr(Pipeline, "algorithms", {
+        "normalization": True, "classifier": False,
+        "knn": True, "filterEnabled": False})
+    args = parser().parse_args([
+        "run", "--server", "https://example.test", "--pair-code", "000012"])
+    with pytest.raises(RuntimeError, match="Student pipeline is unfinished"):
+        main.capture(args)
 
 
 def test_terminal_contract():

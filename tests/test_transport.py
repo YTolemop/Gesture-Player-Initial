@@ -32,6 +32,21 @@ def packets(c):
     return [value for event, value in c.sio.events if event == "input:state"]
 
 
+@pytest.mark.parametrize("ready", [True, False])
+def test_pair_maps_classifier_readiness_to_legacy_protocol(monkeypatch, ready):
+    c = client()
+    monkeypatch.setattr(c.sio, "connect", lambda *args, **kwargs: None, raising=False)
+    flags = {"normalization": True, "classifier": ready,
+             "filterEnabled": False, "knn": not ready}
+    original = flags.copy()
+    c.connect("https://example.test", "", "000012", flags)
+    event, payload = c.sio.calls[-1]
+    assert event == "controller:pair"
+    assert payload["algorithms"] == {
+        "normalization": True, "knn": ready, "filterEnabled": False}
+    assert flags == original
+
+
 def test_atomic_payload_sequence_neutral_gate_and_context_reset():
     c = client()
     c.send(Commands("MOVE_LEFT", "BLOCK"))

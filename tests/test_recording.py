@@ -65,7 +65,7 @@ def test_run_passes_empty_frames_to_student_and_sends_student_commands(monkeypat
             return RawHandSample(hands if timestamp == 1 else [], 64, 48, timestamp)
         def close(self): closed.append("detector")
     class Pipeline:
-        algorithms = {"normalization": True, "knn": True, "filterEnabled": False}
+        algorithms = {"normalization": True, "classifier": True, "filterEnabled": False}
         def __init__(self, path): pass
         def reset(self): resets.append(True)
         def predict(self, sample):

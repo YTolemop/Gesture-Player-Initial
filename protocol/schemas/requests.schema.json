@@ -307,7 +307,8 @@
         "type": "boolean"
       },
       "knn": {
-        "type": "boolean"
+        "type": "boolean",
+        "description": "Legacy protocol v1 name for classifier readiness; does not require the KNN algorithm. Student Pipeline.algorithms uses classifier, mapped by ArenaClient."
       }
     }
   },

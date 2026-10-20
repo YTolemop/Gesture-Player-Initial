@@ -52,11 +52,16 @@ class ArenaClient:
         return result
 
     def connect(self, server, room, pair_code, algorithms):
+        # Protocol v1 calls classifier readiness "knn". Keep that legacy name
+        # at the transport boundary; students may implement any classifier.
+        wire_algorithms = {key: value for key, value in algorithms.items()
+                           if key not in ("classifier", "knn")}
+        wire_algorithms["knn"] = algorithms.get("classifier") is True
         try:
             self.sio.connect(server, namespaces=[NAMESPACE], socketio_path="socket.io")
             result = self.call("controller:pair", {
                 "protocolVersion": 1, "roomCode": room, "pairCode": pair_code,
-                "source": "recognizer", "algorithms": algorithms})
+                "source": "recognizer", "algorithms": wire_algorithms})
             self._context(result)
             return result
         except Exception:

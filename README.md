@@ -4,7 +4,7 @@
 
 你會依序完成：設定環境 → 確認鏡頭 → 收集資料 → 實作辨識 → 訓練與驗證 → 連線遊玩。
 
-本包提供鏡頭讀取、MediaPipe 初始化與推論、原始關節預覽與錄製，以及競技場連線。從 MediaPipe 原始結果到遊戲指令的決策流程，由你完成：左右手整理、可靠度判斷、座標選擇、資料清理、特徵正規化、KNN 分類、未知手勢拒絕、時間濾波與指令映射。
+本包提供鏡頭讀取、MediaPipe 初始化與推論、原始關節預覽與錄製，以及競技場連線。從 MediaPipe 原始結果到遊戲指令的決策流程，由你完成：左右手整理、可靠度判斷、座標選擇、資料清理、特徵與前處理、手勢分類器、未知手勢拒絕、時間濾波與指令映射。
 
 這是實作起點，目前沒有訓練好的自訂手勢分類模型。 MediaPipe 提供的是已訓練好的「手部關節偵測模型」，用途是找出關節座標，不會替你完成遊戲手勢分類。尚未實作時，`train` 和 `run` 會提示未完成。
 
@@ -43,7 +43,7 @@ requirements-lock.txt      套件與固定版本
   鏡頭 → 鏡像影像 → data/*.mp4（供人工檢查）
 
 訓練 train（由學員實作）
-  data/*.jsonl → 清理與取樣 → 特徵轉換 → 儲存 KNN 資料與設定 → models/
+  data/*.jsonl → 清理與取樣 → 特徵轉換 → 儲存分類器所需資料、模型或規則設定 → models/
 
 遊玩 run
   鏡頭 → MediaPipe → RawHandSample → Pipeline.predict() → Commands → 競技場
@@ -198,47 +198,49 @@ python main.py camera --camera 1 --preview --seconds 10
 擺好對應手勢後逐次錄製，例如：
 
 ```powershell
-python main.py record --label point_left --channel left --seconds 10
-python main.py record --label point_right --channel left --seconds 10
+python main.py record --label point_left --channel left --seconds 10 --preview
+python main.py record --label point_right --channel left --seconds 10 --preview
 python main.py record --label fist --channel right --seconds 10 --preview
 ```
 
-每次會在 `data/` 產生一組新的檔案，不覆寫舊檔：
+`--preview` 會即時顯示鏡頭與關節疊圖。上面的指令預設將訓練資料存到 `data/`；每次產生一組新的檔案，不覆寫舊檔：
 
 | 檔案 | 用途 |
 | --- | --- |
-| `.mp4` | 檢查手勢、構圖與錄製品質；不含聲音 |
+| `.mp4` | 回看手勢、構圖與錄製品質，或供自行設計的影像方法使用；不含聲音 |
 | `.jsonl` | 逐幀的標籤、通道、關節座標等資料，供訓練與分析使用 |
 
-每個手勢分多次錄製，適度改變位置、距離與角度。錄完先看影片，避免把切換姿勢、做錯動作的影格當成正確範例。未偵測到手、低左右手分類分數，或左右手分類衝突的影格都會保留，訓練時需自行清理、取樣與決定可靠度標準。
+錄製會保留 `.jsonl` 與 `.mp4` 兩種檔案。使用關節座標分類器時，通常讀取 `.jsonl` 即可；`.mp4` 可供人工回看，也可供自行設計的影像分類方法使用。`--preview` 只控制即時預覽，不會關閉影片錄製。
+
+每個手勢分多次錄製，適度改變位置、距離與角度。錄製時透過預覽確認姿勢，必要時回看影片，避免把切換姿勢、做錯動作的影格當成正確範例。未偵測到手、低左右手分類分數，或左右手分類衝突的影格都會保留，訓練時需自行清理、取樣與決定可靠度標準。
 
 另外錄一批獨立測試資料，可用 `--output` 放到其他資料夾。例如擺好 `fist` 後：
 
 ```powershell
-python main.py record --label fist --channel right --seconds 10 --output data-test
+python main.py record --label fist --channel right --seconds 10 --output data-test --preview
 ```
 
-其他類別也要收集測試資料。不要把這批資料拿去訓練，也不要只將同一段影片相鄰影格隨機拆成訓練與測試，否則容易高估效果。可另錄日常姿勢與手勢切換過程，檢查是否誤觸。
+`--output data-test` 會把這次錄製存到 `data-test/`，其餘錄製行為相同。其他類別也要收集測試資料。不要把這批資料拿去訓練，也不要只將同一段影片相鄰影格隨機拆成訓練與測試，否則容易高估效果。可另錄日常姿勢與手勢切換過程，檢查是否誤觸。
 
 完成標準：上述十個動作各有多段可用訓練資料與另行錄製的獨立測試資料，標籤、通道和實際手勢一致，且已記下每個標籤對應的遊戲指令。
 
 ## 4. 完成自己的辨識流程
 
-主要修改入口是 [`student/pipeline.py`](student/pipeline.py)。先閱讀 [`core/types.py`](core/types.py) 的輸入格式與 [`network/commands.py`](network/commands.py) 的回傳格式。
+主要修改入口是 [`student/pipeline.py`](student/pipeline.py)，分類方法由你選擇，本包不提供已完成的分類器。先閱讀 [`core/types.py`](core/types.py) 的輸入格式與 [`network/commands.py`](network/commands.py) 的回傳格式。
 
 | 實作位置 | 需要完成的行為 |
 | --- | --- |
-| `train(data_dir, model_path)` | 讀取錄製資料，處理無效樣本、建立特徵，儲存 KNN 所需資料及必要設定 |
+| `train(data_dir, model_path)` | 讀取錄製資料，處理無效樣本、建立特徵，訓練或準備所選分類器，儲存所需資料、模型或規則設定 |
 | `Pipeline.__init__(model_path)` | 載入模型與設定，初始化辨識所需狀態 |
-| `Pipeline.predict(sample)` | 解讀原始手部資料、分配左右手、判斷可靠度，再做特徵擷取、KNN、拒絕、濾波與指令映射，回傳 `Commands` |
+| `Pipeline.predict(sample)` | 解讀原始手部資料、分配左右手、判斷可靠度，再做特徵擷取、分類器預測、拒絕、濾波與指令映射，回傳 `Commands` |
 | `Pipeline.reset()` | 清除濾波與其他歷史狀態，避免上一回合結果影響下一回合 |
 
 建議按以下順序實作，每完成一階段就用自己的資料驗證：
 
 1. 原始結果整理：理解 `sample.hands`，自行分配左右手。決定如何使用分類分數、處理同側衝突、缺手與鏡像；不要把陣列索引當成左右手或固定追蹤 ID。
 2. 資料清理與取樣：處理無效影格、類別數量不平衡與相鄰影格重複；保留獨立錄製的測試資料。
-3. 特徵與正規化：選擇影像座標或三維座標，決定如何減少位置、大小等差異。訓練與預測必須使用同一套轉換。
-4. KNN：決定距離、鄰居數與投票方式。訓練通常是準備並保存特徵與標籤，不一定有長時間的反覆學習。
+3. 特徵與前處理：選擇影像座標或三維座標，依分類方法決定是否正規化、如何減少位置與大小等差異。訓練與預測必須使用同一套轉換；不需轉換時，應說明理由。
+4. 分類器：自行選擇並實作適合的分類方法，例如規則判斷、KNN、SVM、隨機森林或神經網路，不限定 KNN。依方法決定訓練、預測與儲存方式；規則分類器可將 `train()` 用於準備、驗證及保存規則設定。若使用額外套件，請自行記錄依賴與版本。
 5. 未知手勢拒絕：決定何時不應硬分到已知類別；缺手、低信心或未知姿勢應回到 `NONE`。
 6. 時間濾波：讓結果穩定，同時控制延遲；缺少某隻手時，清除相應歷史，避免舊結果繼續輸出。
 7. 指令映射與評估：轉成合法遊戲指令，處理左右手與雙手組合，並用獨立資料檢查效果。
@@ -285,7 +287,9 @@ MP4 保存未畫關節的鏡像影像、不含聲音，以固定 30 FPS 寫入�
 python main.py train --data data --model models/model.npz
 ```
 
-這個指令只是呼叫你的訓練入口。模型檔的儲存與載入方式由你實作；預設路徑是 `models/model.npz`，副檔名不會替你完成儲存。請自行建立需要的輸出資料夾。重新收集資料後，需要重新訓練才會更新模型。
+這個指令只是呼叫你的訓練／準備入口。分類器所需資料、模型或規則設定的儲存與載入方式由你實作；預設路徑是 `models/model.npz`，這只是預設檔名，不限定分類器或儲存格式，也不會替你完成儲存。若使用其他格式，訓練與連線時請用 `--model` 指定一致的路徑。請自行建立需要的輸出資料夾。重新收集資料後，需重新執行訓練／準備流程，才會更新分類器使用的資料或設定。
+
+目前的 `Pipeline.predict(sample)` 只接收關節樣本，不含原始影像。若選擇直接使用影像或影片序列的方法，需要自行擴充資料載入與即時影像輸入介面，並保留 `Commands` 輸出與 `reset()` 契約。
 
 目前沒有內建獨立的辨識測試指令。請自行撰寫測試程式或加入終端機辨識輸出，用第 3 步保留的資料驗證，不需先連競技場。
 
@@ -298,7 +302,7 @@ python main.py train --data data --model models/model.npz
 - `predict()` 回傳合法的 `Commands`，雙手合成不會混用單手指令。
 - `reset()` 能清除歷史，模型能在重新啟動程式後載入。
 
-完成並驗證各階段後，更新 `Pipeline.algorithms`：`normalization` 與 `knn` 應為 `True`；若 `filterEnabled` 為 `True`，`filter` 也必須為 `True`。這是實作狀態宣告，單純修改旗標不會產生辨識能力。工具與競技場都會檢查這些狀態。
+完成並驗證各階段後，更新 `Pipeline.algorithms`：`normalization` 表示所選前處理已就緒（包含經確認不需轉換的情況），`classifier` 表示自行選擇的分類器已就緒，兩者應為 `True`；若 `filterEnabled` 為 `True`，`filter` 也必須為 `True`，不使用時間濾波則將 `filterEnabled` 設為 `False`。這是實作狀態宣告，單純修改旗標不會產生辨識能力。連線工具會將 `classifier` 轉成競技場舊協定使用的狀態欄位，學員不需要實作特定分類演算法才能連線。
 
 ## 6. 配對競技場並開始遊戲
 
@@ -394,7 +398,7 @@ macOS／Linux 將指令開頭換成 `./.venv/bin/python`；已啟用虛擬環境
 | --- | --- |
 | 傳輸 | Socket.IO，path 為 `socket.io`，namespace 為 `/controller`，不是原生 WebSocket |
 | 配對 | `controller:pair`：`requestId`、`protocolVersion: 1`、`roomCode`（可空字串）、`pairCode`（保留前導零的字串）、`source: recognizer`、`algorithms` |
-| 演算法狀態 | `algorithms` 中 `normalization`、`knn` 需為 true；`filterEnabled` 為 true 時 `filter` 也需為 true |
+| 演算法狀態 | 學員端使用 `normalization`、`classifier`。現有競技場 v1 封包仍要求 `normalization`、`knn` 為 true，內附連線工具會把 `classifier` 就緒狀態轉成舊欄位 `knn`；此欄位名稱不限制分類方法。`filterEnabled` 為 true 時 `filter` 也需為 true |
 | 配對回覆 | 檢查 `ok`；保留 `sessionId`、`matchId`、`generation`，後續以 `controller:context` 更新 |
 | 輸入事件 | `input:state`，每份封包含 `protocolVersion: 1`、`sessionId`、`matchId`（可 null）、`generation`、遞增非負整數 `seq`、`commands` |
 | 三通道內容 | `commands` 必須完整包含 `left`、`right`、`both`，值為上列指令 |

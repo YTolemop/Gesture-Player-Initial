@@ -54,7 +54,7 @@ def capture(args):
         from network.arena_client import ArenaClient
         pipeline = Pipeline(args.model)
         flags = pipeline.algorithms
-        if not (flags.get("normalization") and flags.get("knn") and
+        if not (flags.get("normalization") and flags.get("classifier") and
                 (not flags.get("filterEnabled") or flags.get("filter"))):
             raise RuntimeError("Student pipeline is unfinished; implement it and set algorithms availability")
 
