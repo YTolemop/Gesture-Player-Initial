@@ -299,21 +299,31 @@ python main.py train --data data --model models/model.npz
 
 ## 6. 配對競技場並開始遊戲
 
-開啟[遊戲網站](https://ga-game.codpy.org/)，確認能進入後：
+### PVE 連線（不需要房號）
 
-1. 在競技場建立或加入房間。
-2. 選擇辨識器輸入，取得六位數配對碼。
-3. 執行 `run`，提供網址與配對碼；房間代碼可另外指定。
-
-下方已使用遊戲網址；房間代碼 `ABCD` 與配對碼 `012345` 是範例，請換成網站顯示的實際值：
+1. 開啟[遊戲網站](https://ga-game.codpy.org/)，選擇 PVE「一命連戰」。
+2. 控制來源選擇「手勢辨識器」，按「產生配對碼」。
+3. 在含有 `main.py` 的 Demo 或 initial 專案資料夾啟動辨識，將下方 `012345` 換成網站當下顯示的六位數配對碼：
 
 ```powershell
-python main.py run --server "https://ga-game.codpy.org" --room "ABCD" --pair-code "012345" --model models/model.npz
+.\.venv\Scripts\python.exe main.py run --server "https://ga-game.codpy.org" --pair-code "012345" --model models/model.npz
 ```
 
-使用上述遊戲網址，不需加 `/controller`。配對碼保留開頭的零。若先前有指定鏡頭，也要在此加上相同的 `--camera`；可加 `--preview` 查看原始關節。預覽不會顯示你的手勢分類，請自行加入辨識輸出以便除錯。
+4. 看到 `Paired` 後回到網站確認準備、選擇技能，倒數後開始挑戰。按「結束挑戰」會保存進行中挑戰的未完成紀錄、離開房間並回到首頁；再次遊玩需重新產生配對碼並啟動辨識器。
 
-看到 `Paired: room=...; ready/start in arena` 後，回到競技場網站準備並開始。`run` 會持續讀取鏡頭、呼叫你的辨識流程並傳送指令。按 `Ctrl+C` 停止；斷線後重新取得配對碼，再啟動一次。
+配對碼用來連接自己的 Python 辨識器，並非雙人邀請碼；保留開頭的零，PVE 不必加 `--room`。配對碼過期或斷線後，請重新產生。網址不用加 `/controller`。macOS／Linux 將指令開頭換成 `./.venv/bin/python`；已啟用虛擬環境時可使用 `python`。initial 需先完成自己的辨識實作並訓練模型，Demo 可使用隨附的模型。
+
+`run` 會自動將鏡頭影像與手部骨架送到網站，無須加 `--preview`；加上 `--preview` 會另外開啟本機關節視窗。若有多支鏡頭，加上 `--camera 1` 選擇另一支。
+
+若出現 `No module named 'cv2'`，代表目前 Python 缺少 OpenCV；先用同一個虛擬環境安裝套件，再檢查：
+
+```powershell
+.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt
+.\.venv\Scripts\python.exe main.py prepare
+.\.venv\Scripts\python.exe main.py check
+```
+
+若尚未建立 `.venv`，先執行 `py -3.13 -m venv .venv`。雙人對戰則在網站建立或加入房間，同樣使用自己的配對碼；`--room` 可選填。
 
 ### 遊戲操作時要知道的事
 
@@ -353,7 +363,7 @@ python main.py run --server "https://ga-game.codpy.org" --room "ABCD" --pair-cod
 | `train` | 呼叫你的訓練入口，可指定 `--data`、`--model` |
 | `run` | 呼叫你的辨識入口並連線，需要 `--server`、`--pair-code`；可指定 `--room`、`--model` |
 
-`data/`、`data-test/`、`models/` 與下載的 `assets/models/` 不納入版本控制，備份或交付時請另外確認。錄製與辨識過程中的影像、關節資料不會由本包上傳競技場。
+`data/`、`data-test/`、`models/` 與下載的 `assets/models/` 不納入版本控制，備份或交付時請另外確認。`run` 會將縮小的鏡頭影像與二維手部骨架經遊戲伺服器轉送到同場網頁；原始錄影與完整關節資料留在本機。
 
 ## 附錄：連線與協定參考
 
