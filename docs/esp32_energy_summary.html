@@ -1,0 +1,631 @@
+<!doctype html>
+<html lang="zh-Hant">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>ESP32 能量罐</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Chakra+Petch:wght@500;600;700&family=JetBrains+Mono:wght@400;600&family=Noto+Sans+TC:wght@400;500;700&display=swap">
+<style>
+    :root {
+        --bg: #f3f5f7;
+        --surface: #ffffff;
+        --sunken: #e8ecf0;
+        --ink: #18212b;
+        --muted: #5a6876;
+        --line: #d3dae1;
+        --accent: #b86e00;
+        --accent-soft: #fbecd3;
+        --ok: #0f7a6c;
+        --ok-soft: #d8f0ec;
+        --no: #b8352b;
+        --no-soft: #f8dfdc;
+        --code-bg: #1d2630;
+        --code-ink: #dfe6ee;
+        --display: "Chakra Petch", "Noto Sans TC", system-ui, sans-serif;
+        --body: "Noto Sans TC", "PingFang TC", "Microsoft JhengHei", system-ui, sans-serif;
+        --mono: "JetBrains Mono", ui-monospace, "Cascadia Mono", Consolas, monospace;
+    }
+    @media (prefers-color-scheme: dark) {
+        :root:not([data-theme="light"]) {
+            color-scheme: dark;
+            --bg: #11161c;
+            --surface: #19212a;
+            --sunken: #222c37;
+            --ink: #e4e9ef;
+            --muted: #98a6b4;
+            --line: #2f3b47;
+            --accent: #f0a63c;
+            --accent-soft: #3a2c16;
+            --ok: #4cc7b4;
+            --ok-soft: #173631;
+            --no: #f07d72;
+            --no-soft: #3d1f1c;
+            --code-bg: #0b0f14;
+            --code-ink: #dfe6ee;
+        }
+    }
+    :root[data-theme="dark"] {
+        color-scheme: dark;
+        --bg: #11161c;
+        --surface: #19212a;
+        --sunken: #222c37;
+        --ink: #e4e9ef;
+        --muted: #98a6b4;
+        --line: #2f3b47;
+        --accent: #f0a63c;
+        --accent-soft: #3a2c16;
+        --ok: #4cc7b4;
+        --ok-soft: #173631;
+        --no: #f07d72;
+        --no-soft: #3d1f1c;
+        --code-bg: #0b0f14;
+        --code-ink: #dfe6ee;
+    }
+
+    * { box-sizing: border-box; }
+    body {
+        background: var(--bg);
+        color: var(--ink);
+        font-family: var(--body);
+        font-size: 15.5px;
+        line-height: 1.7;
+        padding-inline: 16px;
+        padding-block: 0 64px;
+    }
+    .wrap { max-width: 880px; margin: 0 auto; display: grid; gap: 56px; }
+    h1, h2, h3 { font-family: var(--display); text-wrap: balance; line-height: 1.25; margin: 0; }
+    h2 { font-size: 1.55rem; font-weight: 600; }
+    h3 { font-size: 1.1rem; font-weight: 600; }
+    p { margin: 0; max-width: 68ch; }
+    a { color: var(--accent); }
+    code, kbd, .mono { font-family: var(--mono); font-size: .88em; }
+    :not(pre) > code { background: var(--sunken); padding: .1em .38em; border-radius: 4px; }
+    section { display: grid; gap: 18px; }
+    .eyebrow {
+        font-family: var(--mono);
+        font-size: .74rem;
+        letter-spacing: .12em;
+        text-transform: uppercase;
+        color: var(--accent);
+    }
+    :focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+    /* Header */
+    header {
+        padding-block: 56px 8px;
+        display: grid;
+        grid-template-columns: 1fr auto;
+        gap: 28px;
+        align-items: end;
+    }
+    header h1 { font-size: clamp(2rem, 5vw, 2.9rem); font-weight: 700; letter-spacing: .01em; }
+    header .lede { color: var(--muted); font-size: 1.05rem; margin-top: 12px; }
+    .status {
+        display: flex; flex-wrap: wrap; gap: 8px; margin-top: 18px;
+    }
+    .pill {
+        font-family: var(--mono); font-size: .76rem;
+        padding: 3px 10px; border-radius: 999px;
+        border: 1px solid var(--line); color: var(--muted); background: var(--surface);
+    }
+    .pill.warn { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+
+    /* Battery */
+    .battery { display: flex; align-items: center; gap: 3px; }
+    .battery .body {
+        display: grid; grid-template-columns: repeat(6, 1fr); gap: 4px;
+        padding: 5px; border: 2px solid var(--ink); border-radius: 7px;
+        width: 168px; height: 56px;
+    }
+    .battery .cap { width: 6px; height: 20px; background: var(--ink); border-radius: 0 3px 3px 0; }
+    .cell { border-radius: 3px; background: var(--sunken); transition: background .25s; }
+    .cell.on { background: var(--accent); }
+    .battery-label { font-family: var(--mono); font-size: .78rem; color: var(--muted); text-align: center; margin-top: 6px; }
+
+    /* Tables */
+    .table-scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 8px; background: var(--surface); }
+    table { border-collapse: collapse; width: 100%; font-size: .93rem; }
+    th, td { text-align: left; padding: 10px 14px; border-bottom: 1px solid var(--line); vertical-align: top; }
+    th { font-family: var(--display); font-weight: 600; font-size: .86rem; color: var(--muted); background: var(--sunken); white-space: nowrap; }
+    tr:last-child td { border-bottom: 0; }
+    td code { white-space: nowrap; }
+    .tag {
+        display: inline-block; font-family: var(--mono); font-size: .72rem;
+        padding: 1px 7px; border-radius: 4px; white-space: nowrap;
+    }
+    .tag.new { background: var(--ok-soft); color: var(--ok); }
+    .tag.mod { background: var(--accent-soft); color: var(--accent); }
+    .num { font-variant-numeric: tabular-nums; font-family: var(--mono); }
+
+    /* Flow */
+    .flow {
+        background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+        padding: 18px; overflow-x: auto;
+    }
+    .rules { display: grid; grid-template-columns: repeat(auto-fit, minmax(240px, 1fr)); gap: 14px; }
+    .rule { display: grid; gap: 6px; padding: 16px 18px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px; }
+    .rule p { color: var(--muted); font-size: .92rem; }
+
+    /* Simulator */
+    .sim {
+        display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr); gap: 0;
+        border: 1px solid var(--line); border-radius: 10px; overflow: hidden; background: var(--surface);
+    }
+    .sim-controls { padding: 20px; display: grid; gap: 16px; align-content: start; }
+    .sim-buttons { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    button {
+        font: inherit; font-size: .88rem; cursor: pointer;
+        border: 1px solid var(--line); background: var(--bg); color: var(--ink);
+        border-radius: 6px; padding: 8px 10px; text-align: left;
+        display: flex; justify-content: space-between; gap: 8px; align-items: center;
+    }
+    button:hover { border-color: var(--accent); }
+    button .cost { font-family: var(--mono); font-size: .76rem; color: var(--accent); }
+    .sim-util { display: flex; gap: 8px; flex-wrap: wrap; }
+    .sim-util button { flex: 1 1 auto; justify-content: center; }
+    .sim-log {
+        background: var(--code-bg); color: var(--code-ink);
+        font-family: var(--mono); font-size: .82rem; line-height: 1.65;
+        padding: 16px 18px; height: 300px; overflow-y: auto; margin: 0;
+    }
+    .sim-log .tx { color: #9fb3c8; }
+    .sim-log .ok { color: #5fd4bf; }
+    .sim-log .no { color: #ff8f84; }
+    .sim-log .info { color: #f0b860; }
+
+    /* Steps */
+    ol.steps { list-style: none; counter-reset: step; padding: 0; margin: 0; display: grid; gap: 22px; }
+    ol.steps > li { counter-increment: step; display: grid; grid-template-columns: 34px minmax(0, 1fr); gap: 14px; }
+    ol.steps > li::before {
+        content: counter(step); font-family: var(--display); font-weight: 700;
+        width: 30px; height: 30px; border-radius: 50%; display: grid; place-items: center;
+        border: 2px solid var(--accent); color: var(--accent); font-size: .9rem;
+    }
+    .step-body { display: grid; gap: 10px; min-width: 0; }
+    .step-body p { color: var(--muted); }
+    .cmd { position: relative; }
+    .cmd pre {
+        margin: 0; background: var(--code-bg); color: var(--code-ink);
+        font-family: var(--mono); font-size: .84rem; line-height: 1.6;
+        padding: 14px 16px; padding-right: 72px; border-radius: 7px; overflow-x: auto;
+    }
+    .cmd button {
+        position: absolute; top: 8px; right: 8px; padding: 3px 10px; font-size: .74rem;
+        background: transparent; color: #9fb3c8; border-color: #3a4756;
+    }
+    .cmd button:hover { color: #ffffff; border-color: #9fb3c8; }
+
+    /* Checklist */
+    .checks { display: grid; gap: 10px; }
+    .check {
+        display: grid; grid-template-columns: 22px minmax(0, 1fr); gap: 12px; align-items: start;
+        padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: 8px;
+    }
+    .check input { width: 18px; height: 18px; margin: 4px 0 0; accent-color: var(--ok); }
+    .check label { display: grid; gap: 4px; cursor: pointer; }
+    .check strong { font-weight: 600; }
+    .check span { color: var(--muted); font-size: .9rem; }
+    .check:has(input:checked) { border-color: var(--ok); background: var(--ok-soft); }
+    .progress { font-family: var(--mono); font-size: .82rem; color: var(--muted); }
+
+    .note {
+        border-left: 3px solid var(--accent); background: var(--accent-soft);
+        padding: 12px 16px; border-radius: 0 6px 6px 0; font-size: .93rem;
+    }
+    ul.plain { margin: 0; padding-left: 1.2em; display: grid; gap: 6px; max-width: 68ch; }
+    footer { color: var(--muted); font-size: .85rem; border-top: 1px solid var(--line); padding-top: 18px; }
+
+    @media (max-width: 680px) {
+        header { grid-template-columns: 1fr; }
+        .sim { grid-template-columns: 1fr; }
+        .sim-log { height: 220px; }
+    }
+    @media (prefers-reduced-motion: reduce) {
+        .cell { transition: none; }
+    }
+</style>
+</head>
+<body>
+<div class="wrap">
+    <header>
+        <div>
+            <div class="eyebrow">Gesture-Player-Initial · 外接硬體</div>
+            <h1>ESP32 能量罐</h1>
+            <p class="lede">手勢辨識出技能後，要先向 ESP32 申請能量，獲准才送到競技場。這頁整理了這次的實作、變更檔案和測試方式。</p>
+            <div class="status">
+                <span class="pill warn">尚未在實體硬體上測試</span>
+                <span class="pill">分支 feat/esp32-energy-can</span>
+                <span class="pill">競技場伺服器不需修改</span>
+            </div>
+        </div>
+        <div>
+            <div class="battery" aria-hidden="true">
+                <div class="body" id="hero-battery"></div>
+                <div class="cap"></div>
+            </div>
+            <div class="battery-label">預設容量 6 · 每 2 秒 +1</div>
+        </div>
+    </header>
+
+    <section>
+        <div class="eyebrow">運作方式</div>
+        <h2>技能送出前多一道關卡</h2>
+        <p>能量判斷放在玩家電腦上的 Python 辨識器裡，夾在 <code>Pipeline.predict()</code> 和 <code>ArenaClient.send()</code> 之間。ESP32 拒絕的技能，該通道會改送 <code>NONE</code>；移動、格擋這類動作照常送出。競技場原本的氣量、冷卻和硬直規則都保留，兩邊都通過才會施放。</p>
+        <div class="flow">
+<pre class="mermaid">
+sequenceDiagram
+    participant P as 手勢辨識 predict()
+    participant G as EnergyGate
+    participant E as ESP32 能量罐
+    participant A as 競技場
+    P->>G: Commands(right=ULTIMATE)
+    G->>E: REQ 7 ULTIMATE
+    alt 能量足夠
+        E-->>G: OK 7 3
+        G->>A: input:state ULTIMATE
+        A-->>G: input:result reason
+        opt reason 不是 OK（冷卻、氣量不足…）
+            G->>E: REFUND 7
+            E-->>G: REFUNDED 7 6
+        end
+    else 能量不足
+        E-->>G: NO 7 2
+        G->>A: input:state NONE
+    end
+</pre>
+        </div>
+        <div class="rules">
+            <div class="rule">
+                <h3>每按一次只問一次</h3>
+                <p>手勢維持期間沿用同一個結果。離開 0.12 秒才算放開，對應競技場離開 6 tick 才重新觸發的規則，辨識閃爍不會重複扣能量。</p>
+            </div>
+            <div class="rule">
+                <h3>沒施放就退回</h3>
+                <p>競技場回報 <code>COOLDOWN</code>、<code>INSUFFICIENT_QI</code>、<code>ULTIMATE_LOCKED</code> 等失敗，或 1.5 秒內沒有施放結果，會自動送 <code>REFUND</code>。</p>
+            </div>
+            <div class="rule">
+                <h3>沒回應就擋下</h3>
+                <p>ESP32 0.15 秒內沒回覆或斷線時，技能一律擋下。加 <code>--energy-fail-open</code> 改為放行。</p>
+            </div>
+            <div class="rule">
+                <h3>不接就不影響</h3>
+                <p>沒有加 <code>--energy-port</code> 時完全不使用能量罐，行為和原本相同。</p>
+            </div>
+        </div>
+    </section>
+
+    <section>
+        <div class="eyebrow">序列協定 · 115200 baud · ASCII 行</div>
+        <h2>PC 和 ESP32 之間的對話</h2>
+        <p><code>&lt;id&gt;</code> 是 Python 端遞增的整數，回覆用 id 對應請求。不認得的行（開機訊息、逾時請求的遲到回覆）都會被忽略。</p>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>PC → ESP32</th><th>ESP32 → PC</th><th>用途</th></tr></thead>
+                <tbody>
+                    <tr><td><code>PING</code></td><td><code>PONG &lt;energy&gt; &lt;capacity&gt;</code></td><td>連線握手。開埠時 ESP32 可能重開機，Python 會重試 3 秒</td></tr>
+                    <tr><td><code>REQ &lt;id&gt; &lt;LABEL&gt;</code></td><td><code>OK &lt;id&gt; &lt;energy&gt;</code><br><code>NO &lt;id&gt; &lt;energy&gt;</code></td><td>申請施放。回 <code>OK</code> 時已經扣掉能量</td></tr>
+                    <tr><td><code>REFUND &lt;id&gt;</code></td><td><code>REFUNDED &lt;id&gt; &lt;energy&gt;</code><br><code>NO &lt;id&gt; &lt;energy&gt;</code></td><td>退回某次獲准的能量，同一個 id 只退一次</td></tr>
+                    <tr><td><code>FILL</code></td><td><code>PONG &lt;energy&gt; &lt;capacity&gt;</code></td><td>補滿能量，測試用</td></tr>
+                    <tr><td>（開機時）</td><td><code>READY &lt;energy&gt; &lt;capacity&gt;</code></td><td>開機訊息，Python 不依賴這行</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section>
+        <div class="eyebrow">模擬器 · 依韌體邏輯在瀏覽器裡執行</div>
+        <h2>先看看 ESP32 應該怎麼回</h2>
+        <p>這裡照韌體預設值模擬：容量 6、每 2 秒回 1 點。實際燒錄後，在 Arduino 序列埠監控視窗輸入同樣的指令，回覆應該一致。</p>
+        <div class="sim">
+            <div class="sim-controls">
+                <div>
+                    <div class="battery">
+                        <div class="body" id="sim-battery"></div>
+                        <div class="cap"></div>
+                    </div>
+                    <div class="battery-label" id="sim-label" style="text-align:left">energy 6 / 6</div>
+                </div>
+                <div class="sim-buttons" id="sim-buttons"></div>
+                <div class="sim-util">
+                    <button type="button" id="sim-refund">REFUND 上一筆</button>
+                    <button type="button" id="sim-fill">FILL</button>
+                    <button type="button" id="sim-clear">清除紀錄</button>
+                </div>
+            </div>
+            <pre class="sim-log" id="sim-log" aria-live="polite"></pre>
+        </div>
+    </section>
+
+    <section>
+        <div class="eyebrow">變更清單 · Gesture-Player-Initial</div>
+        <h2>改了哪些檔案</h2>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>檔案</th><th></th><th>內容</th></tr></thead>
+                <tbody>
+                    <tr><td><code>network/energy.py</code></td><td><span class="tag new">新增</span></td><td><code>EnergyLink</code> 負責序列埠請求和回覆，含開機握手、忽略雜訊與半行資料。<code>EnergyGate</code> 負責判斷按壓、遮蔽被拒絕的技能和退能量</td></tr>
+                    <tr><td><code>network/arena_client.py</code></td><td><span class="tag mod">修改</span></td><td>監聽 <code>input:result</code>，轉給 <code>result_listener</code></td></tr>
+                    <tr><td><code>main.py</code></td><td><span class="tag mod">修改</span></td><td><code>run</code> 新增 <code>--energy-port</code>、<code>--energy-baud</code>、<code>--energy-labels</code>、<code>--energy-fail-open</code>；狀態列顯示目前能量</td></tr>
+                    <tr><td><code>firmware/esp32_energy_can/esp32_energy_can.ino</code></td><td><span class="tag new">新增</span></td><td>ESP32 韌體：扣能量、退能量、定時回充、LED 提示、BOOT 鍵補滿</td></tr>
+                    <tr><td><code>tests/test_energy.py</code></td><td><span class="tag new">新增</span></td><td>用模擬 ESP32 寫的 10 個單元測試</td></tr>
+                    <tr><td><code>docs/esp32_energy.md</code></td><td><span class="tag new">新增</span></td><td>協定、判斷流程、韌體設定</td></tr>
+                    <tr><td><code>README.md</code></td><td><span class="tag mod">修改</span></td><td>專案架構和指令速查補上能量罐，第 6 節新增「外接 ESP32 能量罐」</td></tr>
+                    <tr><td><code>requirements-lock.txt</code></td><td><span class="tag mod">修改</span></td><td>新增 <code>pyserial==3.5</code></td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section>
+        <div class="eyebrow">韌體預設值</div>
+        <h2>能量消耗和板子腳位</h2>
+        <p>這些數值都寫在 <code>.ino</code> 開頭，可以直接改。</p>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>指令</th><th>消耗</th><th>競技場對應</th></tr></thead>
+                <tbody>
+                    <tr><td><code>ATTACK_SKILL</code></td><td class="num">1</td><td>攻擊技能</td></tr>
+                    <tr><td><code>DEFENSE_SKILL</code></td><td class="num">1</td><td>防禦技能</td></tr>
+                    <tr><td><code>CONTROL_SKILL</code></td><td class="num">2</td><td>控制技能</td></tr>
+                    <tr><td><code>ULTIMATE</code></td><td class="num">3</td><td>大招，開局 20 秒後才解鎖</td></tr>
+                    <tr><td><code>NORMAL_ATTACK</code>、<code>JUMP</code></td><td class="num">0</td><td>預設不經過能量罐；可用 <code>--energy-labels</code> 加入</td></tr>
+                </tbody>
+            </table>
+        </div>
+        <div class="table-scroll">
+            <table>
+                <thead><tr><th>開發板</th><th><code>LED_PIN</code></th><th><code>BUTTON_PIN</code></th><th>其他設定</th></tr></thead>
+                <tbody>
+                    <tr><td>ESP32 DevKit</td><td class="num">2</td><td class="num">0</td><td>預設值可直接用</td></tr>
+                    <tr><td>ESP32-S3</td><td>依板子，常見 48 或 38</td><td class="num">0</td><td>Arduino IDE 開啟 USB CDC On Boot</td></tr>
+                    <tr><td>ESP32-C3</td><td>依板子</td><td class="num">9</td><td>Arduino IDE 開啟 USB CDC On Boot</td></tr>
+                </tbody>
+            </table>
+        </div>
+    </section>
+
+    <section>
+        <div class="eyebrow">測試步驟</div>
+        <h2>從燒錄到實戰</h2>
+        <div class="note">變更在 <a href="https://github.com/YTolemop/Gesture-Player-Initial/tree/feat/esp32-energy-can">feat/esp32-energy-can</a> 分支（commit <code>1bdfa23</code>）。先取得這個分支，再照下面的步驟測試。</div>
+        <div class="cmd"><pre>git clone -b feat/esp32-energy-can https://github.com/YTolemop/Gesture-Player-Initial
+cd Gesture-Player-Initial</pre><button type="button">複製</button></div>
+        <p>已經 clone 過的人，改用 <code>git fetch origin</code> 再 <code>git switch feat/esp32-energy-can</code>。</p>
+        <ol class="steps">
+            <li>
+                <div class="step-body">
+                    <h3>安裝套件</h3>
+                    <p>需要 Python 3.13，並使用專案的虛擬環境。這次新增了 <code>pyserial</code>。</p>
+                    <div class="cmd"><pre>.\.venv\Scripts\python.exe -m pip install -r requirements-lock.txt</pre><button type="button">複製</button></div>
+                </div>
+            </li>
+            <li>
+                <div class="step-body">
+                    <h3>跑單元測試</h3>
+                    <p>不需要硬體，用模擬的 ESP32 驗證判斷邏輯，也一併確認原本的傳輸測試沒有壞。</p>
+                    <div class="cmd"><pre>.\.venv\Scripts\python.exe -m pytest tests/test_energy.py tests/test_transport.py</pre><button type="button">複製</button></div>
+                </div>
+            </li>
+            <li>
+                <div class="step-body">
+                    <h3>燒錄韌體</h3>
+                    <p>用 Arduino IDE 開啟 <code>firmware/esp32_energy_can/esp32_energy_can.ino</code>，開發板選 esp32 套件裡對應的型號，依上表調整腳位後上傳。</p>
+                </div>
+            </li>
+            <li>
+                <div class="step-body">
+                    <h3>用序列埠監控視窗手動對話</h3>
+                    <p>鮑率設 115200、換行選 LF 或 Both NL &amp; CR，依序輸入下面的指令。回覆應該和上面模擬器一樣；能量數字可能因為每 2 秒回充而略高。</p>
+                    <div class="cmd"><pre>PING            → PONG 6 6
+REQ 1 ULTIMATE  → OK 1 3
+REQ 2 ULTIMATE  → OK 2 0
+REQ 3 ATTACK_SKILL → NO 3 0
+REFUND 2        → REFUNDED 2 3
+REFUND 2        → NO 2 3
+FILL            → PONG 6 6</pre><button type="button">複製</button></div>
+                </div>
+            </li>
+            <li>
+                <div class="step-body">
+                    <h3>接上競技場遊玩</h3>
+                    <p>在網站產生配對碼後執行。<code>COM5</code> 換成裝置管理員裡 ESP32 的序列埠；Linux 通常是 <code>/dev/ttyUSB0</code> 或 <code>/dev/ttyACM0</code>，WSL 要先用 <code>usbipd</code> 轉接 USB。看到 <code>Energy can ready: 6/6</code> 才算連上。</p>
+                    <div class="cmd"><pre>.\.venv\Scripts\python.exe main.py run --server "https://ga-game.codpy.org" --pair-code "012345" --energy-port COM5</pre><button type="button">複製</button></div>
+                </div>
+            </li>
+        </ol>
+    </section>
+
+    <section>
+        <div class="eyebrow">驗收清單 · 勾選紀錄只存在你的瀏覽器</div>
+        <h2>測試時逐項確認</h2>
+        <div class="progress" id="check-progress"></div>
+        <div class="checks" id="checks">
+            <div class="check"><input type="checkbox" id="c-unit"><label for="c-unit"><strong>單元測試全部通過</strong><span>tests/test_energy.py 的 10 個測試，加上原本的 test_transport.py。</span></label></div>
+            <div class="check"><input type="checkbox" id="c-serial"><label for="c-serial"><strong>序列埠手動對話結果正確</strong><span>第 4 步的每一行回覆都符合預期，REFUND 同一個 id 第二次回 NO。</span></label></div>
+            <div class="check"><input type="checkbox" id="c-grant"><label for="c-grant"><strong>能量夠時技能正常施放</strong><span>終端機顯示 Energy granted: ATTACK_SKILL (energy=5)，遊戲裡技能有放出來。</span></label></div>
+            <div class="check"><input type="checkbox" id="c-deny"><label for="c-deny"><strong>能量用完時技能被擋下</strong><span>終端機顯示 Energy denied；網站「收到」欄位沒有該技能，移動和格擋仍然正常。</span></label></div>
+            <div class="check"><input type="checkbox" id="c-hold"><label for="c-hold"><strong>維持手勢只扣一次能量</strong><span>同一個技能手勢持續擺著，能量只扣一次；放下再做一次才會再申請。</span></label></div>
+            <div class="check"><input type="checkbox" id="c-refund"><label for="c-refund"><strong>競技場拒絕時能量會退回</strong><span>冷卻中再放同一招，或開局 20 秒內放大招，ESP32 能量應該恢復原值。</span></label></div>
+            <div class="check"><input type="checkbox" id="c-recharge"><label for="c-recharge"><strong>回充和補滿正常</strong><span>能量每 2 秒回 1 點；按 BOOT 鍵立刻補滿，LED 在滿罐時常亮。</span></label></div>
+            <div class="check"><input type="checkbox" id="c-unplug"><label for="c-unplug"><strong>拔掉 ESP32 時技能被擋下</strong><span>遊戲中拔線，終端機出現 Energy can error，技能不再施放；加 --energy-fail-open 則照常放行。</span></label></div>
+            <div class="check"><input type="checkbox" id="c-none"><label for="c-none"><strong>不加 --energy-port 時行為不變</strong><span>不接能量罐的玩法和改動前完全一樣。</span></label></div>
+        </div>
+    </section>
+
+    <section>
+        <div class="eyebrow">已知限制</div>
+        <h2>測試前要知道的事</h2>
+        <ul class="plain">
+            <li>韌體和 Python 整合都是照協定寫的，還沒有在實體 ESP32 上跑過。單元測試也還沒在專案環境執行。</li>
+            <li>ESP32 不知道競技場的氣量和冷卻，只管自己的能量；競技場拒絕後才靠 <code>REFUND</code> 補回。</li>
+            <li>如果競技場在 1.5 秒逾時之後才回報施放成功，那次會變成免費施放。正常情況下施放結果在一個 tick（約 17ms）內就會回來。</li>
+            <li>韌體只保留最近 16 筆可退款的紀錄，太久以前的申請無法退回。</li>
+            <li><code>--energy-port</code> 也接受 <code>socket://IP:port</code>，但目前韌體只實作 USB 序列埠，Wi-Fi 需要另外加。</li>
+        </ul>
+    </section>
+
+    <footer>相關專案：<a href="https://github.com/YTolemop/Gesture-Player-Initial/tree/feat/esp32-energy-can">Gesture-Player-Initial · feat/esp32-energy-can</a>（本次變更）· <a href="https://github.com/YTolemop/Gesture-arena">Gesture-arena</a>（未修改）· 詳細協定見 <code>docs/esp32_energy.md</code></footer>
+</div>
+
+<script>
+    (function () {
+        const CAPACITY = 6;
+        const RECHARGE_MS = 2000;
+        const COSTS = { ATTACK_SKILL: 1, DEFENSE_SKILL: 1, CONTROL_SKILL: 2, ULTIMATE: 3 };
+
+        function drawBattery(el, energy) {
+            if (!el.children.length) {
+                for (let i = 0; i < CAPACITY; i++) {
+                    const cell = document.createElement("div");
+                    cell.className = "cell";
+                    el.appendChild(cell);
+                }
+            }
+            [...el.children].forEach((cell, i) => cell.classList.toggle("on", i < energy));
+        }
+        drawBattery(document.getElementById("hero-battery"), 4);
+
+        // Simulator follows the firmware: tickets, refund once, recharge while not full.
+        let energy = CAPACITY;
+        let nextId = 1;
+        let lastGranted = null;
+        const tickets = new Map();
+        const log = document.getElementById("sim-log");
+        const battery = document.getElementById("sim-battery");
+        const label = document.getElementById("sim-label");
+
+        function write(text, kind) {
+            const line = document.createElement("div");
+            line.className = kind;
+            line.textContent = text;
+            log.appendChild(line);
+            log.scrollTop = log.scrollHeight;
+        }
+        function render() {
+            drawBattery(battery, energy);
+            label.textContent = `energy ${energy} / ${CAPACITY}`;
+        }
+        function request(name) {
+            const id = nextId++;
+            write(`> REQ ${id} ${name}`, "tx");
+            const cost = COSTS[name];
+            if (energy >= cost) {
+                energy -= cost;
+                tickets.set(id, cost);
+                lastGranted = id;
+                write(`< OK ${id} ${energy}`, "ok");
+            } else {
+                write(`< NO ${id} ${energy}`, "no");
+            }
+            render();
+        }
+        function refund() {
+            if (lastGranted === null) {
+                write("（還沒有獲准的申請可以退）", "info");
+                return;
+            }
+            const id = lastGranted;
+            write(`> REFUND ${id}`, "tx");
+            if (tickets.has(id)) {
+                energy = Math.min(CAPACITY, energy + tickets.get(id));
+                tickets.delete(id);
+                write(`< REFUNDED ${id} ${energy}`, "ok");
+            } else {
+                write(`< NO ${id} ${energy}`, "no");
+            }
+            render();
+        }
+
+        const buttons = document.getElementById("sim-buttons");
+        Object.entries(COSTS).forEach(([name, cost]) => {
+            const b = document.createElement("button");
+            b.type = "button";
+            b.innerHTML = `<span class="mono">${name}</span><span class="cost">−${cost}</span>`;
+            b.addEventListener("click", () => request(name));
+            buttons.appendChild(b);
+        });
+        document.getElementById("sim-refund").addEventListener("click", refund);
+        document.getElementById("sim-fill").addEventListener("click", () => {
+            write("> FILL", "tx");
+            energy = CAPACITY;
+            write(`< PONG ${energy} ${CAPACITY}`, "ok");
+            render();
+        });
+        document.getElementById("sim-clear").addEventListener("click", () => { log.textContent = ""; });
+
+        let lastRecharge = Date.now();
+        setInterval(() => {
+            const now = Date.now();
+            if (energy >= CAPACITY) {
+                lastRecharge = now;
+                return;
+            }
+            if (now - lastRecharge >= RECHARGE_MS) {
+                energy++;
+                lastRecharge += RECHARGE_MS;
+                write(`（回充 +1 → ${energy}）`, "info");
+                render();
+            }
+        }, 200);
+
+        write("READY 6 6", "info");
+        write("> PING", "tx");
+        write("< PONG 6 6", "ok");
+        request("ULTIMATE");
+        request("CONTROL_SKILL");
+        request("ATTACK_SKILL");
+        request("ULTIMATE");
+        refund();
+
+        // Copy buttons.
+        document.querySelectorAll(".cmd button").forEach((b) => {
+            b.addEventListener("click", () => {
+                const pre = b.parentElement.querySelector("pre");
+                const done = () => { b.textContent = "已複製"; setTimeout(() => { b.textContent = "複製"; }, 1500); };
+                const fallback = () => {
+                    const range = document.createRange();
+                    range.selectNodeContents(pre);
+                    const sel = window.getSelection();
+                    sel.removeAllRanges();
+                    sel.addRange(range);
+                    b.textContent = "已選取";
+                    setTimeout(() => { b.textContent = "複製"; }, 1500);
+                };
+                try {
+                    navigator.clipboard.writeText(pre.textContent).then(done, fallback);
+                } catch (e) {
+                    fallback();
+                }
+            });
+        });
+
+        // Checklist, remembered per viewer.
+        const KEY = "esp32-energy-checks";
+        const boxes = [...document.querySelectorAll("#checks input")];
+        const progress = document.getElementById("check-progress");
+        let saved = {};
+        try { saved = JSON.parse(localStorage.getItem(KEY) || "{}"); } catch (e) { saved = {}; }
+        function update() {
+            const done = boxes.filter((b) => b.checked).length;
+            progress.textContent = `已完成 ${done} / ${boxes.length}`;
+        }
+        boxes.forEach((b) => {
+            b.checked = !!saved[b.id];
+            b.addEventListener("change", () => {
+                saved[b.id] = b.checked;
+                try { localStorage.setItem(KEY, JSON.stringify(saved)); } catch (e) {}
+                update();
+            });
+        });
+        update();
+    })();
+</script>
+<script type="module">
+    import mermaid from "https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.esm.min.mjs";
+    const dark = matchMedia("(prefers-color-scheme: dark)").matches;
+    mermaid.initialize({ startOnLoad: true, theme: dark ? "dark" : "neutral" });
+</script>
+</body>
+</html>
