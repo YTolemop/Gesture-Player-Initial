@@ -29,7 +29,9 @@ student/
 network/
   commands.py              定義合法的 Commands 輸出
   arena_client.py          處理配對、傳送指令與連線狀態
+  energy.py                選用：施放技能前向 ESP32 能量罐申請
   preview.py               將現有鏡頭影像與骨架轉成網站預覽
+firmware/                  ESP32 能量罐韌體（選用）
 protocol/                  競技場通訊規格與範例封包
 tests/                     工具與介面契約的測試
 requirements-lock.txt      套件與固定版本
@@ -355,6 +357,14 @@ macOS／Linux 將指令開頭換成 `./.venv/bin/python`；已啟用虛擬環境
 - 左右手可同時維持兩個指令；相同指令合併一次，相反移動方向抵銷。
 - 同時送出不代表兩個動作必定成功，冷卻、資源、硬直與空中限制仍由競技場判斷。兩個一次性指令按左手、右手順序嘗試。
 
+### 外接 ESP32 能量罐（選用）
+
+接上燒錄 `firmware/esp32_energy_can` 的 ESP32 並加上 `--energy-port`，攻擊、防禦、控制技能與大招在送出前都要先向能量罐申請；能量不足時該技能改送 `NONE`，競技場拒絕施放時會自動退回能量。ESP32 沒有回應時預設擋下技能。協定、韌體設定與使用方式見 [`docs/esp32_energy.md`](docs/esp32_energy.md)。
+
+```powershell
+.\.venv\Scripts\python.exe main.py run --server "https://ga-game.codpy.org" --pair-code "012345" --energy-port COM5
+```
+
 完成標準：配對成功後，能用手勢控制遊戲；放下手或回到中立姿勢能停止持續動作，重新開始回合也不會沿用舊辨識結果。
 
 ## 常見問題
@@ -384,7 +394,7 @@ macOS／Linux 將指令開頭換成 `./.venv/bin/python`；已啟用虛擬環境
 | `camera` | 開鏡頭，顯示手的偵測數量；加 `--preview` 顯示關節疊圖 |
 | `record` | 錄製 MP4 與逐幀 JSONL，需要 `--label`、`--channel` |
 | `train` | 呼叫你的訓練入口，可指定 `--data`、`--model` |
-| `run` | 呼叫你的辨識入口並連線，需要 `--server`、`--pair-code`；可指定 `--room`、`--model` |
+| `run` | 呼叫你的辨識入口並連線，需要 `--server`、`--pair-code`；可指定 `--room`、`--model`，接 ESP32 能量罐時加 `--energy-port` |
 
 `data/`、`data-test/`、`models/` 與下載的 `assets/models/` 不納入版本控制，備份或交付時請另外確認。`run` 會將縮小的鏡頭影像與二維手部骨架經遊戲伺服器轉送到同場網頁；原始錄影與完整關節資料留在本機。
 

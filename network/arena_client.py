@@ -23,7 +23,9 @@ class ArenaClient:
         self.last_sent_revision = -1
         self.last_result = None
         self.send_error = None
+        self.result_listener = None
         self.sio.on("controller:context", self._context, namespace=NAMESPACE)
+        self.sio.on("input:result", self._result, namespace=NAMESPACE)
         self.sio.on("disconnect", self._disconnect, namespace=NAMESPACE)
 
     def _context(self, value):
@@ -38,6 +40,12 @@ class ArenaClient:
                 self.neutral_until = time.monotonic() + .25
                 self.last_result = None
                 self.send_error = None
+
+    def _result(self, value):
+        # Cast outcome per one-shot label, e.g. COOLDOWN or INSUFFICIENT_QI.
+        listener = self.result_listener
+        if listener:
+            listener(value)
 
     def _disconnect(self, reason=None):
         with self.lock:

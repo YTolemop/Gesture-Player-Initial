@@ -16,6 +16,14 @@ def positive(value):
     return number
 
 
+def labels(value):
+    from network.commands import LABELS
+    names = tuple(v.strip().upper() for v in value.split(",") if v.strip())
+    if not names or any(v not in LABELS or v == "NONE" for v in names):
+        raise argparse.ArgumentTypeError("must be arena labels other than NONE")
+    return names
+
+
 def parser():
     p = argparse.ArgumentParser(description="Gesture Player Initial — terminal tools")
     sub = p.add_subparsers(dest="command", required=True)
@@ -36,6 +44,15 @@ def parser():
             cmd.add_argument("--room", default="")
             cmd.add_argument("--pair-code", required=True)
             cmd.add_argument("--model", type=Path, default=ROOT / "models/model.npz")
+            cmd.add_argument("--energy-port",
+                             help="ESP32 energy can serial port (e.g. COM5, /dev/ttyUSB0); "
+                                  "skills need its grant before release")
+            cmd.add_argument("--energy-baud", type=int, default=115200)
+            cmd.add_argument("--energy-labels", type=labels,
+                             default="ATTACK_SKILL,DEFENSE_SKILL,CONTROL_SKILL,ULTIMATE",
+                             help="comma-separated labels that need energy")
+            cmd.add_argument("--energy-fail-open", action="store_true",
+                             help="allow skills when the ESP32 does not answer (default: block)")
     train = sub.add_parser("train")
     train.add_argument("--data", type=Path, default=ROOT / "data")
     train.add_argument("--model", type=Path, default=ROOT / "models/model.npz")
@@ -48,7 +65,7 @@ def capture(args):
     from core.landmarks import Landmarks
     from network.commands import Commands
 
-    pipeline = client = None
+    pipeline = client = gate = None
     if args.command == "run":
         from student.pipeline import Pipeline
         from network.arena_client import ArenaClient
@@ -63,9 +80,17 @@ def capture(args):
         stack.callback(detector.close)
         camera = Camera(args.camera)
         stack.callback(camera.close)
+        if pipeline and args.energy_port:
+            from network.energy import EnergyGate, EnergyLink
+            link = EnergyLink(args.energy_port, args.energy_baud)
+            stack.callback(link.close)
+            gate = EnergyGate(link, args.energy_labels, fail_open=args.energy_fail_open)
+            print(f"Energy can ready: {link.energy}/{link.capacity} on {args.energy_port}", flush=True)
         if pipeline:
             client = ArenaClient()
             stack.callback(client.close)
+            if gate:
+                client.result_listener = gate.on_result
             result = client.connect(args.server, args.room, args.pair_code, pipeline.algorithms)
             print(f"Paired: room={result['roomCode']}; ready/start in arena", flush=True)
         if args.preview:
@@ -112,17 +137,23 @@ def capture(args):
                     current = client.revision
                     if current != revision:
                         pipeline.reset()
+                        if gate:
+                            gate.reset()
                         revision = current
                     # Students own handedness, missing-hand behavior and filtering.
                     commands = pipeline.predict(sample)
                     if not isinstance(commands, Commands):
                         raise TypeError("Pipeline.predict must return Commands")
+                    if gate:
+                        # Skills reach the arena only after the energy can grants them.
+                        commands = gate.filter(commands)
                     client.send(commands, revision)
                     client.send_preview(frame, sample, revision)
                 if args.preview and not show_preview(frame, sample):
                     break
                 if now - last_report >= 1:
-                    print(f"fps={(count - last_report_count) / (now - last_report):.1f} frames={count} hands={len(sample.hands)}", flush=True)
+                    energy = f" energy={gate.link.energy}/{gate.link.capacity}" if gate else ""
+                    print(f"fps={(count - last_report_count) / (now - last_report):.1f} frames={count} hands={len(sample.hands)}{energy}", flush=True)
                     last_report_count = count
                     last_report = now
         except KeyboardInterrupt:
